@@ -30,10 +30,17 @@ class SQLTokenizer:
                     self.position += 1
                 tokens.append(Token(kind="literal", value=self.sql_text[start:self.position], position=start))
                 continue
-            if char.isalnum() or char in "._#@":
+            if char in "#@":
                 start = self.position
                 self.position += 1
-                while self.position < len(self.sql_text) and (self.sql_text[self.position].isalnum() or self.sql_text[self.position] in "._#@"):
+                while self.position < len(self.sql_text) and (self.sql_text[self.position].isalnum() or self.sql_text[self.position] in "._"):
+                    self.position += 1
+                tokens.append(Token(kind="identifier", value=self.sql_text[start:self.position], position=start))
+                continue
+            if char.isalnum() or char in "._":
+                start = self.position
+                self.position += 1
+                while self.position < len(self.sql_text) and (self.sql_text[self.position].isalnum() or self.sql_text[self.position] in "._"):
                     self.position += 1
                 tokens.append(Token(kind="identifier", value=self.sql_text[start:self.position], position=start))
                 continue

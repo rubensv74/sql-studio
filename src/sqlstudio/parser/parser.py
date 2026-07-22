@@ -51,11 +51,11 @@ class SQLParser:
                 objects.append(current_object)
             elif value == "DECLARE" and index + 1 < len(tokens):
                 variable_name = self._extract_name(tokens, index + 1)
-                if variable_name:
+                if variable_name and not variable_name.startswith("@"):
                     variables.append(Variable(name=variable_name))
             elif value == "SET" and index + 1 < len(tokens):
                 variable_name = self._extract_name(tokens, index + 1)
-                if variable_name:
+                if variable_name and variable_name.startswith("@"):
                     variables.append(Variable(name=variable_name))
             elif value in {"EXEC", "EXECUTE"}:
                 dynamic_sql = True
@@ -66,7 +66,11 @@ class SQLParser:
             elif value in {"FROM", "JOIN", "UPDATE", "INTO", "DELETE", "MERGE", "OPENQUERY", "OPENROWSET"}:
                 ref_name = self._extract_name(tokens, index + 1)
                 if ref_name:
-                    references.append(Reference(name=ref_name))
+                    if "." in ref_name:
+                        parts = ref_name.split(".")
+                        references.append(Reference(name=parts[-1], schema=parts[-2] if len(parts) > 1 else None, database=parts[0] if len(parts) > 2 else None))
+                    else:
+                        references.append(Reference(name=ref_name))
             elif in_parameter_list and token.value.startswith("@"):
                 current_parameter = Parameter(name=token.value)
                 parameters.append(current_parameter)
