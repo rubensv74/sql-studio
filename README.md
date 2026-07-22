@@ -1,3 +1,3 @@
-# SQL Studio Sprint 002
+# SQL Studio Sprint 003
 
-Core engine configuration and reusable templates.
+First executable CLI prototype.
