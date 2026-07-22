@@ -1,0 +1,3 @@
+# SQL Studio Prompt
+
+(Placeholder)
