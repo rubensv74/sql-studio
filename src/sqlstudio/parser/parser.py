@@ -27,10 +27,12 @@ class SQLParser:
         current_object: SqlObject | None = None
         current_parameter: Parameter | None = None
         in_parameter_list = False
+        expect_default_value = False
+        seen_variables = set()
 
         for index, token in enumerate(tokens):
-            if token.value in {"#", "##"}:
-                temporary_tables.append(token.value)
+            if token.value.startswith("#"):
+                temporary_tables.append("#")
                 continue
 
             if token.kind != "identifier":
@@ -39,6 +41,8 @@ class SQLParser:
                 elif token.value == ")":
                     in_parameter_list = False
                     current_parameter = None
+                elif token.value == "=":
+                    expect_default_value = in_parameter_list and current_parameter is not None
                 continue
 
             value = token.value.upper()
@@ -51,12 +55,14 @@ class SQLParser:
                 objects.append(current_object)
             elif value == "DECLARE" and index + 1 < len(tokens):
                 variable_name = self._extract_name(tokens, index + 1)
-                if variable_name and not variable_name.startswith("@"):
+                if variable_name and variable_name.startswith("@") and variable_name not in seen_variables:
                     variables.append(Variable(name=variable_name))
+                    seen_variables.add(variable_name)
             elif value == "SET" and index + 1 < len(tokens):
                 variable_name = self._extract_name(tokens, index + 1)
-                if variable_name and variable_name.startswith("@"):
+                if variable_name and variable_name.startswith("@") and variable_name not in seen_variables:
                     variables.append(Variable(name=variable_name))
+                    seen_variables.add(variable_name)
             elif value in {"EXEC", "EXECUTE"}:
                 dynamic_sql = True
                 references.append(Reference(name="EXEC", kind="call"))
@@ -64,6 +70,9 @@ class SQLParser:
                 dynamic_sql = True
                 references.append(Reference(name="sp_executesql", kind="call"))
             elif value in {"FROM", "JOIN", "UPDATE", "INTO", "DELETE", "MERGE", "OPENQUERY", "OPENROWSET"}:
+                if current_object is None:
+                    current_object = SqlObject(name="UnnamedScript", schema=None, object_type="Script")
+                    objects.append(current_object)
                 ref_name = self._extract_name(tokens, index + 1)
                 if ref_name:
                     if "." in ref_name:
@@ -78,10 +87,13 @@ class SQLParser:
                 current_parameter = Parameter(name=current_parameter.name, output=True)
                 parameters[-1] = current_parameter
             elif in_parameter_list and current_parameter is not None and value not in {"AS", "RETURNS"}:
-                if current_parameter.datatype is None and value not in {"INT", "VARCHAR", "NVARCHAR", "BIT", "DATE", "DATETIME", "DECIMAL", "FLOAT", "CHAR", "TABLE"}:
-                    if current_parameter.default_value is None and token.value not in {"=", "OUTPUT", "OUT"}:
-                        current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
-                        parameters[-1] = current_parameter
+                if expect_default_value:
+                    current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
+                    parameters[-1] = current_parameter
+                    expect_default_value = False
+                elif current_parameter.datatype is None and value not in {"INT", "VARCHAR", "NVARCHAR", "BIT", "DATE", "DATETIME", "DECIMAL", "FLOAT", "CHAR", "TABLE"}:
+                    current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
+                    parameters[-1] = current_parameter
                 elif current_parameter.datatype is None:
                     current_parameter = Parameter(name=current_parameter.name, datatype=token.value, output=current_parameter.output)
                     parameters[-1] = current_parameter
