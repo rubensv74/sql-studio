@@ -58,6 +58,18 @@ class SQLParserTests(unittest.TestCase):
         document = parser.parse("SELECT * FROM OtherDb.dbo.TableA")
         self.assertTrue(document.objects[0].references if document.objects else False)
 
+    def test_comments_are_ignored_when_collecting_references(self):
+        parser = SQLParser()
+        document = parser.parse(
+            "CREATE PROCEDURE dbo.TestProc AS BEGIN\n"
+            "SELECT * FROM dbo.RealTable;\n"
+            "/* ignored FROM dbo.IgnoredTable */\n"
+            "SELECT 1;\n"
+            "END"
+        )
+        reference_names = [reference.name for reference in document.objects[0].references]
+        self.assertEqual(reference_names, ["RealTable"])
+
     def test_malformed_sql(self):
         parser = SQLParser()
         document = parser.parse("CREATE PROCEDURE dbo.BadProc AS BEGIN DECLARE @x INT SET @x = 1")
