@@ -25,41 +25,35 @@ class SQLParser:
         temporary_tables: List[str] = []
         dynamic_sql = False
         current_object: SqlObject | None = None
+        current_parameter: Parameter | None = None
+        in_parameter_list = False
 
         for index, token in enumerate(tokens):
+            if token.value in {"#", "##"}:
+                temporary_tables.append(token.value)
+                continue
+
             if token.kind != "identifier":
-                if token.value in {"#", "##"}:
-                    temporary_tables.append(token.value)
+                if token.value == "(":
+                    in_parameter_list = current_object is not None
+                elif token.value == ")":
+                    in_parameter_list = False
+                    current_parameter = None
                 continue
 
             value = token.value.upper()
             if value == "CREATE":
-                next_token = tokens[index + 1].value.upper() if index + 1 < len(tokens) else ""
-                if next_token == "PROCEDURE":
-                    name = self._extract_name(tokens, index + 2)
-                    current_object = SqlObject(name=name or "UnnamedProcedure", schema=None, object_type="Stored Procedure")
-                    objects.append(current_object)
-                elif next_token == "VIEW":
-                    name = self._extract_name(tokens, index + 2)
-                    current_object = SqlObject(name=name or "UnnamedView", schema=None, object_type="View")
-                    objects.append(current_object)
-                elif next_token == "FUNCTION":
-                    name = self._extract_name(tokens, index + 2)
-                    current_object = SqlObject(name=name or "UnnamedFunction", schema=None, object_type="Function")
-                    objects.append(current_object)
-                elif next_token == "TRIGGER":
-                    name = self._extract_name(tokens, index + 2)
-                    current_object = SqlObject(name=name or "UnnamedTrigger", schema=None, object_type="Trigger")
-                    objects.append(current_object)
-                elif next_token == "TABLE":
-                    name = self._extract_name(tokens, index + 2)
-                    current_object = SqlObject(name=name or "UnnamedTable", schema=None, object_type="Table")
-                    objects.append(current_object)
-            elif value == "DECLARE":
+                object_type = self._find_object_type(tokens, index + 1)
+                if object_type is None:
+                    continue
+                name = self._extract_name(tokens, index + 1)
+                current_object = SqlObject(name=name or f"Unnamed{object_type}", schema=None, object_type=object_type)
+                objects.append(current_object)
+            elif value == "DECLARE" and index + 1 < len(tokens):
                 variable_name = self._extract_name(tokens, index + 1)
                 if variable_name:
                     variables.append(Variable(name=variable_name))
-            elif value == "SET":
+            elif value == "SET" and index + 1 < len(tokens):
                 variable_name = self._extract_name(tokens, index + 1)
                 if variable_name:
                     variables.append(Variable(name=variable_name))
@@ -73,11 +67,20 @@ class SQLParser:
                 ref_name = self._extract_name(tokens, index + 1)
                 if ref_name:
                     references.append(Reference(name=ref_name))
-            elif value == "PARAMETER" or value == "OUTPUT":
-                continue
-            elif current_object is not None and value.startswith("@"):
-                if index > 0 and tokens[index - 1].value.upper() == "DECLARE":
-                    variables.append(Variable(name=value))
+            elif in_parameter_list and token.value.startswith("@"):
+                current_parameter = Parameter(name=token.value)
+                parameters.append(current_parameter)
+            elif in_parameter_list and current_parameter is not None and value in {"OUTPUT", "OUT"}:
+                current_parameter = Parameter(name=current_parameter.name, output=True)
+                parameters[-1] = current_parameter
+            elif in_parameter_list and current_parameter is not None and value not in {"AS", "RETURNS"}:
+                if current_parameter.datatype is None and value not in {"INT", "VARCHAR", "NVARCHAR", "BIT", "DATE", "DATETIME", "DECIMAL", "FLOAT", "CHAR", "TABLE"}:
+                    if current_parameter.default_value is None:
+                        current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
+                        parameters[-1] = current_parameter
+                elif current_parameter.datatype is None:
+                    current_parameter = Parameter(name=current_parameter.name, datatype=token.value, output=current_parameter.output)
+                    parameters[-1] = current_parameter
 
         if objects:
             first_object = objects[0]
@@ -94,6 +97,30 @@ class SQLParser:
             objects = [object_with_details]
 
         return SqlDocument(sql_text=sql_text, objects=objects, tokens=tokens)
+
+    def _find_object_type(self, tokens: List[Token], start: int) -> str | None:
+        index = start
+        while index < len(tokens):
+            token = tokens[index]
+            if token.kind != "identifier":
+                index += 1
+                continue
+            value = token.value.upper()
+            if value in {"OR", "ALTER"}:
+                index += 1
+                continue
+            if value == "PROCEDURE":
+                return "Stored Procedure"
+            if value == "VIEW":
+                return "View"
+            if value == "FUNCTION":
+                return "Function"
+            if value == "TRIGGER":
+                return "Trigger"
+            if value == "TABLE":
+                return "Table"
+            index += 1
+        return None
 
     def _extract_name(self, tokens: List[Token], start: int) -> str | None:
         for index in range(start, len(tokens)):
