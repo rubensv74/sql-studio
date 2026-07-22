@@ -42,7 +42,14 @@ class SQLTokenizer:
                 self.position += 1
                 while self.position < len(self.sql_text) and (self.sql_text[self.position].isalnum() or self.sql_text[self.position] in "._"):
                     self.position += 1
-                tokens.append(Token(kind="identifier", value=self.sql_text[start:self.position], position=start))
+                value = self.sql_text[start:self.position]
+                parts = value.split('.')
+                if len(parts) > 1:
+                    for part in parts:
+                        tokens.append(Token(kind="identifier", value=part, position=start))
+                        start += len(part) + 1
+                else:
+                    tokens.append(Token(kind="identifier", value=value, position=start))
                 continue
             tokens.append(Token(kind="operator", value=char, position=self.position))
             self.position += 1

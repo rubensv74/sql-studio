@@ -79,7 +79,7 @@ class SQLParser:
                 parameters[-1] = current_parameter
             elif in_parameter_list and current_parameter is not None and value not in {"AS", "RETURNS"}:
                 if current_parameter.datatype is None and value not in {"INT", "VARCHAR", "NVARCHAR", "BIT", "DATE", "DATETIME", "DECIMAL", "FLOAT", "CHAR", "TABLE"}:
-                    if current_parameter.default_value is None:
+                    if current_parameter.default_value is None and token.value not in {"=", "OUTPUT", "OUT"}:
                         current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
                         parameters[-1] = current_parameter
                 elif current_parameter.datatype is None:
