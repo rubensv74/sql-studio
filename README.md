@@ -1,3 +1,3 @@
-# SQL Studio Sprint 003
+# Sprint004
 
-First executable CLI prototype.
+SQL Handoff Generator prototype.
