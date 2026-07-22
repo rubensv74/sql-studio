@@ -1,17 +1,16 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List
 
 
-@dataclass
+@dataclass(frozen=True)
 class SqlFileEntry:
     path: str
     name: str
     kind: str
-    content: str
+    content: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProjectIndex:
     root: str
     files: List[SqlFileEntry]

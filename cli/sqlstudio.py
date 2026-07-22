@@ -29,7 +29,7 @@ def scan_repository(folder):
     print(engine.to_json(folder))
 
 
-if __name__ == "__main__":
+def main() -> int:
     import argparse
 
     ap = argparse.ArgumentParser(prog="sqlstudio")
@@ -42,11 +42,22 @@ if __name__ == "__main__":
     sc.add_argument("folder")
     args = ap.parse_args()
 
-    if args.cmd == "new-sprint":
-        create_sprint(args.name)
-    elif args.cmd == "new-handoff":
-        create_handoff(args.name)
-    elif args.cmd == "scan":
-        scan_repository(args.folder)
-    else:
-        ap.print_help()
+    try:
+        if args.cmd == "new-sprint":
+            create_sprint(args.name)
+        elif args.cmd == "new-handoff":
+            create_handoff(args.name)
+        elif args.cmd == "scan":
+            scan_repository(args.folder)
+        else:
+            ap.print_help()
+            return 0
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
