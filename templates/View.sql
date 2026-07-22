@@ -1,0 +1,2 @@
+CREATE VIEW dbo.Template AS SELECT 1 AS Id;
+GO
