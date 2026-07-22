@@ -29,6 +29,49 @@ def scan_repository(folder):
     print(engine.to_json(folder))
 
 
+def parse_sql_file(path):
+    from sqlstudio import SQLParser
+
+    parser = SQLParser()
+    document = parser.parse(Path(path).read_text(encoding="utf-8", errors="ignore"))
+    payload = {
+        "sql_text": document.sql_text,
+        "objects": [
+            {
+                "name": obj.name,
+                "schema": obj.schema,
+                "object_type": obj.object_type,
+                "parameters": [
+                    {
+                        "name": param.name,
+                        "datatype": param.datatype,
+                        "default_value": param.default_value,
+                        "output": param.output,
+                    }
+                    for param in obj.parameters
+                ],
+                "variables": [
+                    {"name": var.name, "value": var.value}
+                    for var in obj.variables
+                ],
+                "references": [
+                    {
+                        "name": ref.name,
+                        "schema": ref.schema,
+                        "database": ref.database,
+                        "kind": ref.kind,
+                    }
+                    for ref in obj.references
+                ],
+                "temporary_tables": obj.temporary_tables,
+                "dynamic_sql": obj.dynamic_sql,
+            }
+            for obj in document.objects
+        ],
+    }
+    print(json.dumps(payload, indent=2))
+
+
 def main() -> int:
     import argparse
 
@@ -40,6 +83,8 @@ def main() -> int:
     ho.add_argument("name")
     sc = sub.add_parser("scan")
     sc.add_argument("folder")
+    ps = sub.add_parser("parse")
+    ps.add_argument("file")
     args = ap.parse_args()
 
     try:
@@ -49,6 +94,8 @@ def main() -> int:
             create_handoff(args.name)
         elif args.cmd == "scan":
             scan_repository(args.folder)
+        elif args.cmd == "parse":
+            parse_sql_file(args.file)
         else:
             ap.print_help()
             return 0
