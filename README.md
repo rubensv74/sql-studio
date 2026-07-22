@@ -1,3 +1,3 @@
-# Sprint 006
+# Sprint 007
 
-Profiler Engine prototype.
+Static SQL Analyzer prototype.
