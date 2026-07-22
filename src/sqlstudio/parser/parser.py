@@ -24,28 +24,37 @@ class SQLParser:
         references: List[Reference] = []
         temporary_tables: List[str] = []
         dynamic_sql = False
+        current_object: SqlObject | None = None
 
         for index, token in enumerate(tokens):
             if token.kind != "identifier":
+                if token.value in {"#", "##"}:
+                    temporary_tables.append(token.value)
                 continue
+
             value = token.value.upper()
             if value == "CREATE":
                 next_token = tokens[index + 1].value.upper() if index + 1 < len(tokens) else ""
                 if next_token == "PROCEDURE":
                     name = self._extract_name(tokens, index + 2)
-                    objects.append(SqlObject(name=name or "UnnamedProcedure", schema=None, object_type="Stored Procedure"))
+                    current_object = SqlObject(name=name or "UnnamedProcedure", schema=None, object_type="Stored Procedure")
+                    objects.append(current_object)
                 elif next_token == "VIEW":
                     name = self._extract_name(tokens, index + 2)
-                    objects.append(SqlObject(name=name or "UnnamedView", schema=None, object_type="View"))
+                    current_object = SqlObject(name=name or "UnnamedView", schema=None, object_type="View")
+                    objects.append(current_object)
                 elif next_token == "FUNCTION":
                     name = self._extract_name(tokens, index + 2)
-                    objects.append(SqlObject(name=name or "UnnamedFunction", schema=None, object_type="Function"))
+                    current_object = SqlObject(name=name or "UnnamedFunction", schema=None, object_type="Function")
+                    objects.append(current_object)
                 elif next_token == "TRIGGER":
                     name = self._extract_name(tokens, index + 2)
-                    objects.append(SqlObject(name=name or "UnnamedTrigger", schema=None, object_type="Trigger"))
+                    current_object = SqlObject(name=name or "UnnamedTrigger", schema=None, object_type="Trigger")
+                    objects.append(current_object)
                 elif next_token == "TABLE":
                     name = self._extract_name(tokens, index + 2)
-                    objects.append(SqlObject(name=name or "UnnamedTable", schema=None, object_type="Table"))
+                    current_object = SqlObject(name=name or "UnnamedTable", schema=None, object_type="Table")
+                    objects.append(current_object)
             elif value == "DECLARE":
                 variable_name = self._extract_name(tokens, index + 1)
                 if variable_name:
@@ -54,23 +63,21 @@ class SQLParser:
                 variable_name = self._extract_name(tokens, index + 1)
                 if variable_name:
                     variables.append(Variable(name=variable_name))
-            elif value == "EXEC" or value == "EXECUTE":
+            elif value in {"EXEC", "EXECUTE"}:
                 dynamic_sql = True
                 references.append(Reference(name="EXEC", kind="call"))
             elif value == "SP_EXECUTESQL":
                 dynamic_sql = True
                 references.append(Reference(name="sp_executesql", kind="call"))
-            elif value == "SELECT" and index + 1 < len(tokens):
-                next_value = tokens[index + 1].value.upper() if index + 1 < len(tokens) else ""
-                if next_value == "*":
-                    pass
-            elif value == "FROM" or value == "JOIN" or value == "UPDATE" or value == "INTO" or value == "DELETE" or value == "MERGE" or value == "OPENQUERY" or value == "OPENROWSET":
+            elif value in {"FROM", "JOIN", "UPDATE", "INTO", "DELETE", "MERGE", "OPENQUERY", "OPENROWSET"}:
                 ref_name = self._extract_name(tokens, index + 1)
                 if ref_name:
                     references.append(Reference(name=ref_name))
-
-            if token.value == "#" or token.value == "##":
-                temporary_tables.append(token.value)
+            elif value == "PARAMETER" or value == "OUTPUT":
+                continue
+            elif current_object is not None and value.startswith("@"):
+                if index > 0 and tokens[index - 1].value.upper() == "DECLARE":
+                    variables.append(Variable(name=value))
 
         if objects:
             first_object = objects[0]
