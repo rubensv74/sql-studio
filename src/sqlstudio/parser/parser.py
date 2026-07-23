@@ -1,8 +1,15 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Sequence
 
 from .ast import Parameter, Reference, SqlDocument, SqlObject, Token, Variable
+from .context import ParserContext
+from .statements import (
+    CreateStatementParser,
+    DeclarationStatementParser,
+    ExecutionStatementParser,
+    ReferenceStatementParser,
+)
 from .tokenizer import SQLTokenizer
 
 
@@ -18,130 +25,56 @@ class SQLParser:
         tokens = tokenizer.tokenize()
         self._tokens = tokens
 
-        objects: List[SqlObject] = []
-        parameters: List[Parameter] = []
-        variables: List[Variable] = []
-        references: List[Reference] = []
-        temporary_tables: List[str] = []
-        dynamic_sql = False
-        current_object: SqlObject | None = None
-        current_parameter: Parameter | None = None
-        in_parameter_list = False
-        expect_default_value = False
-        seen_variables = set()
+        context = ParserContext(tokens=tokens)
+        self._parse_statements(context)
 
-        for index, token in enumerate(tokens):
-            if token.value.startswith("#"):
-                temporary_tables.append("#")
-                continue
-
-            if token.kind != "identifier":
-                if token.value == "(":
-                    in_parameter_list = current_object is not None
-                elif token.value == ")":
-                    in_parameter_list = False
-                    current_parameter = None
-                elif token.value == "=":
-                    expect_default_value = in_parameter_list and current_parameter is not None
-                continue
-
-            value = token.value.upper()
-            if value == "CREATE":
-                object_type = self._find_object_type(tokens, index + 1)
-                if object_type is None:
-                    continue
-                name = self._extract_name(tokens, index + 1)
-                current_object = SqlObject(name=name or f"Unnamed{object_type}", schema=None, object_type=object_type)
-                objects.append(current_object)
-            elif value == "DECLARE" and index + 1 < len(tokens):
-                variable_name = self._extract_name(tokens, index + 1)
-                if variable_name and variable_name.startswith("@") and variable_name not in seen_variables:
-                    variables.append(Variable(name=variable_name))
-                    seen_variables.add(variable_name)
-            elif value == "SET" and index + 1 < len(tokens):
-                variable_name = self._extract_name(tokens, index + 1)
-                if variable_name and variable_name.startswith("@") and variable_name not in seen_variables:
-                    variables.append(Variable(name=variable_name))
-                    seen_variables.add(variable_name)
-            elif value in {"EXEC", "EXECUTE"}:
-                dynamic_sql = True
-                references.append(Reference(name="EXEC", kind="call"))
-            elif value == "SP_EXECUTESQL":
-                dynamic_sql = True
-                references.append(Reference(name="sp_executesql", kind="call"))
-            elif value in {"FROM", "JOIN", "UPDATE", "INTO", "DELETE", "MERGE", "OPENQUERY", "OPENROWSET"}:
-                if current_object is None:
-                    current_object = SqlObject(name="UnnamedScript", schema=None, object_type="Script")
-                    objects.append(current_object)
-                ref_name = self._extract_name(tokens, index + 1)
-                if ref_name:
-                    if "." in ref_name:
-                        parts = ref_name.split(".")
-                        references.append(Reference(name=parts[-1], schema=parts[-2] if len(parts) > 1 else None, database=parts[0] if len(parts) > 2 else None))
-                    else:
-                        references.append(Reference(name=ref_name))
-            elif in_parameter_list and token.value.startswith("@"):
-                current_parameter = Parameter(name=token.value)
-                parameters.append(current_parameter)
-            elif in_parameter_list and current_parameter is not None and value in {"OUTPUT", "OUT"}:
-                current_parameter = Parameter(name=current_parameter.name, output=True)
-                parameters[-1] = current_parameter
-            elif in_parameter_list and current_parameter is not None and value not in {"AS", "RETURNS"}:
-                if expect_default_value:
-                    current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
-                    parameters[-1] = current_parameter
-                    expect_default_value = False
-                elif current_parameter.datatype is None and value not in {"INT", "VARCHAR", "NVARCHAR", "BIT", "DATE", "DATETIME", "DECIMAL", "FLOAT", "CHAR", "TABLE"}:
-                    current_parameter = Parameter(name=current_parameter.name, datatype=current_parameter.datatype, default_value=token.value, output=current_parameter.output)
-                    parameters[-1] = current_parameter
-                elif current_parameter.datatype is None:
-                    current_parameter = Parameter(name=current_parameter.name, datatype=token.value, output=current_parameter.output)
-                    parameters[-1] = current_parameter
-
-        if objects:
-            first_object = objects[0]
+        if context.objects:
+            first_object = context.objects[0]
             object_with_details = SqlObject(
                 name=first_object.name,
                 schema=first_object.schema,
                 object_type=first_object.object_type,
-                parameters=parameters,
-                variables=variables,
-                references=references,
-                temporary_tables=temporary_tables,
-                dynamic_sql=dynamic_sql,
+                parameters=context.parameters,
+                variables=context.variables,
+                references=context.references,
+                temporary_tables=context.temporary_tables,
+                dynamic_sql=context.dynamic_sql,
             )
-            objects = [object_with_details]
+            context.objects = [object_with_details]
 
-        return SqlDocument(sql_text=sql_text, objects=objects, tokens=tokens)
+        return SqlDocument(sql_text=sql_text, objects=context.objects, tokens=tokens)
+
+    def _parse_statements(self, context: ParserContext) -> None:
+        statement_tokens: List[Token] = []
+        for token in context.tokens:
+            if token.value == ";":
+                self._parse_statement(statement_tokens, context)
+                statement_tokens = []
+                continue
+            if token.kind == "identifier" and token.value.startswith("#"):
+                context.add_temporary_table(token.value)
+            statement_tokens.append(token)
+        if statement_tokens:
+            self._parse_statement(statement_tokens, context)
+
+    def _parse_statement(self, statement_tokens: Sequence[Token], context: ParserContext) -> None:
+        if not statement_tokens:
+            return
+        filtered = [token for token in statement_tokens if token.value != ";"]
+        if not filtered:
+            return
+        parsers = [
+            CreateStatementParser(),
+            DeclarationStatementParser(),
+            ExecutionStatementParser(),
+            ReferenceStatementParser(),
+        ]
+        for parser in parsers:
+            if parser.parse(filtered, context):
+                break
 
     def _find_object_type(self, tokens: List[Token], start: int) -> str | None:
-        index = start
-        while index < len(tokens):
-            token = tokens[index]
-            if token.kind != "identifier":
-                index += 1
-                continue
-            value = token.value.upper()
-            if value in {"OR", "ALTER"}:
-                index += 1
-                continue
-            if value == "PROCEDURE":
-                return "Stored Procedure"
-            if value == "VIEW":
-                return "View"
-            if value == "FUNCTION":
-                return "Function"
-            if value == "TRIGGER":
-                return "Trigger"
-            if value == "TABLE":
-                return "Table"
-            index += 1
         return None
 
     def _extract_name(self, tokens: List[Token], start: int) -> str | None:
-        for index in range(start, len(tokens)):
-            token = tokens[index]
-            if token.kind != "identifier":
-                continue
-            return token.value
         return None

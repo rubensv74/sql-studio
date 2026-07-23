@@ -22,6 +22,7 @@ class ReferenceStatementParser(StatementParser):
                 stream.advance()
                 next_token = stream.current()
                 if next_token is not None and next_token.kind == "identifier":
+                    context.ensure_object()
                     parts = next_token.value.split(".")
                     if len(parts) == 1:
                         context.add_reference(parts[0])
