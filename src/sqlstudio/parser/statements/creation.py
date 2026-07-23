@@ -52,24 +52,29 @@ class CreateStatementParser(StatementParser):
         return None
 
     def _extract_name_and_schema(self, tokens: Sequence[Token], start: int) -> tuple[str | None, str | None]:
-        ignored = {"CREATE", "OR", "ALTER", "PROCEDURE", "VIEW", "FUNCTION", "TRIGGER", "TABLE", "AS", "RETURNS", "BEGIN", "END"}
-        parts: list[str] = []
-        for token in tokens[start:]:
-            if token.kind != "identifier":
-                continue
-            value = token.value
-            if value.upper() in ignored:
-                continue
-            if value.startswith("@"):
-                continue
-            parts.append(value)
-            if len(parts) >= 2:
-                break
-        if not parts:
+        object_keywords = {"PROCEDURE", "VIEW", "FUNCTION", "TRIGGER", "TABLE"}
+        object_keyword_index = next(
+            (
+                index
+                for index, token in enumerate(tokens[start:], start=start)
+                if token.kind == "identifier" and token.value.upper() in object_keywords
+            ),
+            None,
+        )
+        if object_keyword_index is None:
             return None, None
-        if len(parts) == 1:
-            return parts[0], None
-        return parts[-1], parts[0]
+
+        for token in tokens[object_keyword_index + 1 :]:
+            if token.kind != "identifier" or token.value.startswith("@"):
+                continue
+            qualified_parts = [part for part in token.value.split(".") if part]
+            if not qualified_parts:
+                return None, None
+            if len(qualified_parts) == 1:
+                return qualified_parts[0], None
+            return qualified_parts[-1], qualified_parts[-2]
+
+        return None, None
 
     def _parse_parameter_list(self, stream: TokenStream, context: ParserContext) -> None:
         while not stream.is_at_end():
