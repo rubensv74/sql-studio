@@ -1,36 +1,41 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
+from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+src_root_text = str(SRC_ROOT)
+while src_root_text in sys.path:
+    sys.path.remove(src_root_text)
+sys.path.insert(0, src_root_text)
 
 from sqlstudio import RepositoryEngine
 
 
-def create_sprint(name):
+def create_sprint(name: str) -> None:
     p = Path("sprints") / name
     p.mkdir(parents=True, exist_ok=True)
     (p / "README.md").write_text(f"# {name}\n", encoding="utf-8")
     print(f"Created {p}")
 
 
-def create_handoff(name):
+def create_handoff(name: str) -> None:
     p = Path("handoffs") / f"{name}.md"
     p.parent.mkdir(exist_ok=True)
     p.write_text(f"# Handoff {name}\n", encoding="utf-8")
     print(f"Created {p}")
 
 
-def scan_repository(folder):
+def scan_repository(folder: str) -> None:
     engine = RepositoryEngine(folder)
     print(engine.to_json(folder))
 
 
-def parse_sql_file(path):
+def parse_sql_file(path: str) -> None:
     from sqlstudio import SQLParser
 
     parser = SQLParser()
@@ -73,19 +78,102 @@ def parse_sql_file(path):
     print(json.dumps(payload, indent=2))
 
 
-def main() -> int:
+def _collect_sql_files(paths: Iterable[str], recursive: bool = False) -> list[Path]:
+    """Resolve input files and directories into a stable list of SQL files."""
+
+    resolved: dict[str, Path] = {}
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Input path does not exist: {path}")
+
+        if path.is_file():
+            if path.suffix.casefold() != ".sql":
+                raise ValueError(f"Input file is not a .sql file: {path}")
+            resolved[str(path.resolve()).casefold()] = path
+            continue
+
+        pattern = "**/*.sql" if recursive else "*.sql"
+        for sql_file in path.glob(pattern):
+            if sql_file.is_file():
+                resolved[str(sql_file.resolve()).casefold()] = sql_file
+
+    files = sorted(resolved.values(), key=lambda item: str(item).casefold())
+    if not files:
+        raise FileNotFoundError("No SQL files were found in the supplied input paths")
+    return files
+
+
+def analyze_dependencies(
+    paths: Iterable[str],
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+) -> Path | None:
+    """Analyze SQL files and print or write their dependency graph as JSON."""
+
+    from sqlstudio.dependencies import DependencyAnalyzer, DependencyGraphSerializer
+
+    files = _collect_sql_files(paths, recursive=recursive)
+    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+    graph = DependencyAnalyzer().analyze_many(sql_texts)
+    indent = None if compact else 2
+
+    if output:
+        destination = DependencyGraphSerializer.write_json(graph, output, indent=indent)
+        print(destination)
+        return destination
+
+    print(DependencyGraphSerializer.to_json(graph, indent=indent))
+    return None
+
+
+def build_parser():
     import argparse
 
     ap = argparse.ArgumentParser(prog="sqlstudio")
     sub = ap.add_subparsers(dest="cmd")
+
     sp = sub.add_parser("new-sprint")
     sp.add_argument("name")
+
     ho = sub.add_parser("new-handoff")
     ho.add_argument("name")
+
     sc = sub.add_parser("scan")
     sc.add_argument("folder")
+
     ps = sub.add_parser("parse")
     ps.add_argument("file")
+
+    dep = sub.add_parser(
+        "dependencies",
+        help="Analyze SQL object dependencies and emit a JSON graph",
+    )
+    dep.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
+    dep.add_argument(
+        "-o",
+        "--output",
+        help="Write JSON to this file instead of stdout",
+    )
+    dep.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Search supplied directories recursively",
+    )
+    dep.add_argument(
+        "--compact",
+        action="store_true",
+        help="Emit compact JSON without indentation",
+    )
+
+    return ap
+
+
+def main() -> int:
+    ap = build_parser()
     args = ap.parse_args()
 
     try:
@@ -97,10 +185,17 @@ def main() -> int:
             scan_repository(args.folder)
         elif args.cmd == "parse":
             parse_sql_file(args.file)
+        elif args.cmd == "dependencies":
+            analyze_dependencies(
+                args.paths,
+                output=args.output,
+                recursive=args.recursive,
+                compact=args.compact,
+            )
         else:
             ap.print_help()
             return 0
-    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
