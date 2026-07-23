@@ -129,6 +129,38 @@ def analyze_dependencies(
     return None
 
 
+
+def analyze_cross_references(
+    paths: Iterable[str],
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+) -> Path | None:
+    """Analyze SQL files and print or write cross-references as JSON."""
+
+    from sqlstudio.cross_reference import (
+        CrossReferenceAnalyzer,
+        CrossReferenceSerializer,
+    )
+
+    files = _collect_sql_files(paths, recursive=recursive)
+    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+    references = CrossReferenceAnalyzer().analyze_many(sql_texts)
+    indent = None if compact else 2
+
+    if output:
+        destination = CrossReferenceSerializer.write_json(
+            references,
+            output,
+            indent=indent,
+        )
+        print(destination)
+        return destination
+
+    print(CrossReferenceSerializer.to_json(references, indent=indent))
+    return None
+
 def build_parser():
     import argparse
 
@@ -169,6 +201,28 @@ def build_parser():
         help="Emit compact JSON without indentation",
     )
 
+    xref = sub.add_parser(
+        "cross-references",
+        help="Analyze SQL cross-references and emit JSON",
+    )
+    xref.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
+    xref.add_argument(
+        "-o",
+        "--output",
+        help="Write JSON to this file instead of stdout",
+    )
+    xref.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Search supplied directories recursively",
+    )
+    xref.add_argument(
+        "--compact",
+        action="store_true",
+        help="Emit compact JSON without indentation",
+    )
+
     return ap
 
 
@@ -187,6 +241,13 @@ def main() -> int:
             parse_sql_file(args.file)
         elif args.cmd == "dependencies":
             analyze_dependencies(
+                args.paths,
+                output=args.output,
+                recursive=args.recursive,
+                compact=args.compact,
+            )
+        elif args.cmd == "cross-references":
+            analyze_cross_references(
                 args.paths,
                 output=args.output,
                 recursive=args.recursive,
