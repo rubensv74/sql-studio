@@ -24,6 +24,7 @@ Available commands:
 | `scan` | Scan a repository and emit its repository model as JSON. |
 | `parse` | Parse one SQL file and emit the parser result as JSON. |
 | `dependencies` | Build and export a SQL object dependency graph. |
+| `cross-references` | Analyze and export SQL cross-references. |
 
 ## `new-sprint`
 
@@ -151,6 +152,105 @@ python cli/sqlstudio.py dependencies sql/ --recursive \
 
 Prefer `--output` when possible because it creates missing parent directories automatically.
 
+## `cross-references`
+
+Builds a cross-reference report from one or more SQL files or directories.
+
+```text
+usage: sqlstudio cross-references [-h] [-o OUTPUT] [-r] [--compact]
+                                  paths [paths ...]
+```
+
+### Inputs
+
+Each positional `path` may be:
+
+- a `.sql` file;
+- a directory containing `.sql` files;
+- one of several files and directories supplied in the same command.
+
+Directory scans are non-recursive by default. Use `--recursive` to include nested folders. Duplicate files are removed by resolved path and processed in deterministic order.
+
+### Options
+
+| Option | Meaning |
+| --- | --- |
+| `-o`, `--output FILE` | Write the JSON report to `FILE` instead of standard output. Missing parent directories are created automatically. |
+| `-r`, `--recursive` | Search supplied directories recursively for `.sql` files. |
+| `--compact` | Emit compact JSON without indentation. |
+
+### Analyze one file
+
+```bash
+python cli/sqlstudio.py cross-references examples/sample_procedure.sql
+```
+
+### Analyze several files
+
+```bash
+python cli/sqlstudio.py cross-references \
+  sql/views/active_orders.sql \
+  sql/procedures/process_orders.sql
+```
+
+### Analyze a directory recursively
+
+```bash
+python cli/sqlstudio.py cross-references sql/ --recursive
+```
+
+### Write the report to a file
+
+```bash
+python cli/sqlstudio.py cross-references sql/ \
+  --recursive \
+  --output reports/cross-references.json
+```
+
+When `--output` is used, the CLI prints the destination path after writing the report.
+
+### Emit compact JSON
+
+```bash
+python cli/sqlstudio.py cross-references sql/ --recursive --compact
+```
+
+### Cross-reference report format
+
+The JSON document contains a schema version and a stable, sorted `cross_references` collection.
+
+Representative structure:
+
+```json
+{
+  "schema_version": "1.0",
+  "cross_references": [
+    {
+      "source": "dbo.ActiveOrders",
+      "target": "sales.Orders",
+      "type": "read"
+    },
+    {
+      "source": "dbo.RunReport",
+      "target": "reporting.BuildReport",
+      "type": "execute"
+    }
+  ]
+}
+```
+
+The current engine emits `read` references for standard object dependencies and `execute` references for stored procedure calls.
+
+### Exit codes and validation errors
+
+The command returns `0` on success and `1` for handled input, file-system, permission, or validation errors. Errors are written to standard error.
+
+```bash
+python cli/sqlstudio.py cross-references missing.sql
+python cli/sqlstudio.py cross-references README.md
+python cli/sqlstudio.py cross-references empty-folder/
+```
+
 ## Dependency graph format
 
 The JSON document contains a schema version plus stable, sorted node and edge collections.
@@ -246,4 +346,16 @@ PYTHONPATH=src python -m unittest \
   tests/test_dependency_analyzer.py \
   tests/test_dependency_serialization.py \
   tests/test_cli_dependencies.py
+```
+
+## Running the Cross Reference Engine tests
+
+From the repository root:
+
+```bash
+PYTHONPATH=src python -m unittest \
+  tests/test_cross_reference_engine.py \
+  tests/test_cross_reference_analyzer.py \
+  tests/test_cross_reference_serialization.py \
+  tests/test_cli_cross_references.py
 ```
