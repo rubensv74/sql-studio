@@ -1,5 +1,11 @@
 # Changelog
 
-## Sprint001
+## 0.11.0
 
--   Initial repository structure.
+### Added
+- Cross Reference Engine
+- CrossReference models
+- CrossReferenceAnalyzer
+- CrossReference serialization
+- CLI cross-references
+- Architecture documentation
