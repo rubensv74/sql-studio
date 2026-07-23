@@ -65,6 +65,8 @@ class ParserContext:
     def add_temporary_table(self, name: str) -> None:
         if name and name not in self.temporary_tables:
             self.temporary_tables.append(name)
+        if name.startswith("#") and "#" not in self.temporary_tables:
+            self.temporary_tables.append("#")
 
     def add_diagnostic(self, message: str) -> None:
         self.diagnostics.append(message)

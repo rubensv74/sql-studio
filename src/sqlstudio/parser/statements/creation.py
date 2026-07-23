@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from ..ast import Parameter, Token
+from ..ast import Parameter, SqlObject, Token
 from ..context import ParserContext
 from ..token_stream import TokenStream
 from .base import StatementParser
@@ -24,17 +24,11 @@ class CreateStatementParser(StatementParser):
 
         name, schema = self._extract_name_and_schema(statement_tokens, 0)
         object_name = name or f"Unnamed{object_type}"
-        object_obj = Parameter(name=object_name) if False else None
-        obj = None
-        if object_obj is None:
-            from ..ast import SqlObject
-            obj = SqlObject(name=object_name, schema=schema, object_type=object_type)
-        if obj is not None:
-            context.add_object(obj)
+        context.add_object(SqlObject(name=object_name, schema=schema, object_type=object_type))
 
-        if stream.match_symbol("("):
-            self._parse_parameter_list(stream, context)
-            stream.match_symbol(")")
+        opening_index = next((index for index, token in enumerate(statement_tokens) if token.value == "("), None)
+        if opening_index is not None:
+            self._parse_parameter_list(TokenStream(list(statement_tokens[opening_index + 1:])), context)
 
         return True
 

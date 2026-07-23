@@ -70,8 +70,7 @@ class SQLParser:
             ReferenceStatementParser(),
         ]
         for parser in parsers:
-            if parser.parse(filtered, context):
-                break
+            parser.parse(filtered, context)
 
     def _find_object_type(self, tokens: List[Token], start: int) -> str | None:
         return None
