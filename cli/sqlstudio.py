@@ -110,6 +110,7 @@ def analyze_dependencies(
     output: str | None = None,
     recursive: bool = False,
     compact: bool = False,
+    html: str | None = None,
 ) -> Path | None:
     """Analyze SQL files and print or write their dependency graph as JSON."""
 
@@ -136,6 +137,7 @@ def analyze_cross_references(
     output: str | None = None,
     recursive: bool = False,
     compact: bool = False,
+    html: str | None = None,
 ) -> Path | None:
     """Analyze SQL files and print or write cross-references as JSON."""
 
@@ -169,15 +171,21 @@ def analyze_impact(
     output: str | None = None,
     recursive: bool = False,
     compact: bool = False,
+    html: str | None = None,
 ) -> Path | None:
     """Analyze SQL files and print or write an impact report as JSON."""
 
-    from sqlstudio.impact_analysis import ImpactAnalyzer, ImpactResultSerializer
+    from sqlstudio.impact_analysis import ImpactAnalyzer, ImpactResultSerializer, ImpactReportExporter
 
     files = _collect_sql_files(paths, recursive=recursive)
     sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
     result = ImpactAnalyzer().analyze_many(sql_texts, root_object)
     indent = None if compact else 2
+    if html:
+        destination = ImpactReportExporter().export(result, html)
+        print(destination)
+        return destination
+
     payload = ImpactResultSerializer.to_json(result, indent=indent)
 
     if output:
@@ -272,6 +280,7 @@ def build_parser():
         action="store_true",
         help="Search supplied directories recursively",
     )
+    impact.add_argument("--html", help="Write HTML report to this file")
     impact.add_argument(
         "--compact",
         action="store_true",
@@ -300,6 +309,7 @@ def main() -> int:
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
+                html=args.html,
             )
         elif args.cmd == "cross-references":
             analyze_cross_references(
@@ -307,6 +317,7 @@ def main() -> int:
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
+                html=args.html,
             )
         elif args.cmd == "impact":
             analyze_impact(
@@ -315,6 +326,7 @@ def main() -> int:
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
+                html=args.html,
             )
         else:
             ap.print_help()
