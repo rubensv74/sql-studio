@@ -144,3 +144,13 @@ li {{
         else:
             body = '<p class="empty">No hay objetos en esta categoría.</p>'
         return f'<article class="panel"><h2>{escape(title)}</h2>{body}</article>'
+
+
+TREE_SCRIPT = '''
+<script>
+function toggleNode(id){
+ const e=document.getElementById(id);
+ if(e){e.style.display=e.style.display==='none'?'block':'none';}
+}
+</script>
+'''
