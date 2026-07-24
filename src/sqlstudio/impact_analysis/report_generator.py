@@ -167,3 +167,18 @@ function toggleNode(id){
 }
 </script>
 '''
+
+
+    def _render_tree(self, node, level=0):
+        if node is None:
+            return ""
+        node_id=f"node_{id(node)}"
+        html=f'<li><span class="tree-node" onclick="toggleNode(\'{node_id}\')">{escape(str(getattr(node,"name","")))}<\/span>'
+        children=getattr(node,"children",[])
+        if children:
+            html+=f'<ul id="{node_id}" style="display:none">'
+            for child in children:
+                html+=self._render_tree(child, level+1)
+            html+='</ul>'
+        html+='</li>'
+        return html
