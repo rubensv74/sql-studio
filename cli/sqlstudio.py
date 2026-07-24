@@ -309,7 +309,6 @@ def main() -> int:
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
-                html=args.html,
             )
         elif args.cmd == "cross-references":
             analyze_cross_references(
@@ -317,7 +316,6 @@ def main() -> int:
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
-                html=args.html,
             )
         elif args.cmd == "impact":
             analyze_impact(
