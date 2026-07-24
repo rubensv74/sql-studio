@@ -127,7 +127,20 @@ li {{
                 selected.append(allowed[key])
         return selected
 
+    
     @staticmethod
+    def _tree(root: str, objects: list[str]) -> str:
+        if not objects:
+            return '<p class="empty">No hay dependencias.</p>'
+        items=''.join(f'<li>{escape(o)}</li>' for o in objects)
+        return (
+            '<article class="panel"><h2>Árbol de dependencias</h2>'
+            '<button onclick="toggleNode(\'depTree\')">Expandir / Contraer</button>'
+            '<div id="depTree" class="dependency-tree">'
+            f'<ul><li><strong>{escape(root)}</strong><ul>{items}</ul></li></ul>'
+            '</div></article>'
+        )
+@staticmethod
     def _metric(label: str, value: int) -> str:
         return (
             '<article class="metric">'
