@@ -1,6 +1,6 @@
 import unittest
 
-from sqlstudio.impact_analysis import ImpactReportGenerator, ImpactResult
+from sqlstudio.impact_analysis import ImpactNode, ImpactReportGenerator, ImpactResult
 
 
 class TestImpactReportGenerator(unittest.TestCase):
@@ -20,8 +20,8 @@ class TestImpactReportGenerator(unittest.TestCase):
         self.assertIn("<strong>2</strong>", html)
         self.assertIn("Dependencias directas", html)
         self.assertIn("Dependencias indirectas", html)
-        self.assertIn("dbo.ViewA", html)
-        self.assertIn("dbo.TableB", html)
+        self.assertIn("Árbol de dependencias", html)
+        self.assertIn("toggleImpactNode", html)
 
     def test_escapes_html_content(self):
         result = ImpactResult(
@@ -43,8 +43,31 @@ class TestImpactReportGenerator(unittest.TestCase):
 
         html = ImpactReportGenerator().generate(result)
 
-        self.assertEqual(html.count("dbo.Child"), 1)
         self.assertIn("<strong>1</strong>", html)
+        self.assertEqual(html.count("dbo.Child"), 2)  # category plus dependency tree
+        self.assertNotIn("DBO.CHILD", html)
+
+    def test_renders_multilevel_tree_recursively(self):
+        result = ImpactResult(
+            root_object="dbo.Root",
+            impacted_objects=["dbo.Child", "dbo.Grandchild"],
+            tree=ImpactNode(
+                name="dbo.Root",
+                children=[
+                    ImpactNode(
+                        name="dbo.Child",
+                        children=[ImpactNode(name="dbo.Grandchild")],
+                    )
+                ],
+            ),
+        )
+
+        html = ImpactReportGenerator().generate(result)
+
+        self.assertIn('aria-controls="impact-tree"', html)
+        self.assertIn('aria-controls="impact-tree-0"', html)
+        self.assertIn("dbo.Grandchild", html)
+        self.assertNotIn("<\\/span>", html)
 
 
 if __name__ == "__main__":

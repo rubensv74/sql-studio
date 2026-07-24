@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 from typing import Iterable, Optional
 
-from .models import ImpactResult
+from .models import ImpactNode, ImpactResult
 
 
 class ImpactReportGenerator:
@@ -20,6 +20,7 @@ class ImpactReportGenerator:
         direct = self._ordered_subset(direct_objects or (), impacted)
         direct_set = {item.casefold() for item in direct}
         indirect = [item for item in impacted if item.casefold() not in direct_set]
+        tree = getattr(result, "tree", None) or self._flat_tree(root, impacted)
 
         return f"""<!DOCTYPE html>
 <html lang="es">
@@ -60,11 +61,11 @@ h1 {{ margin: 0 0 8px; font-size: 30px; }}
 .metrics {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }}
 .metric {{ padding: 18px; }}
 .metric strong {{ display: block; margin-top: 6px; font-size: 28px; }}
-.grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }}
+.grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 20px; }}
 .panel {{ padding: 20px; }}
 .panel h2 {{ margin: 0 0 16px; font-size: 18px; }}
 ul {{ margin: 0; padding: 0; list-style: none; }}
-li {{
+.dependency-list li {{
   position: relative;
   margin: 0 0 10px 14px;
   padding: 11px 12px 11px 18px;
@@ -74,6 +75,23 @@ li {{
   font-family: Consolas, monospace;
   word-break: break-word;
 }}
+.tree {{ overflow-x: auto; }}
+.tree ul {{ margin-left: 18px; padding-left: 14px; border-left: 1px solid var(--border); }}
+.tree li {{ margin: 8px 0; font-family: Consolas, monospace; }}
+.tree-node {{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: default;
+}}
+.tree-node.expandable {{ cursor: pointer; }}
+.tree-node.expandable::before {{ content: "▾"; color: var(--primary); }}
+.tree-node.expandable.collapsed::before {{ content: "▸"; }}
 .empty {{ margin: 0; color: var(--muted); }}
 @media (max-width: 720px) {{
   .metrics, .grid {{ grid-template-columns: 1fr; }}
@@ -100,7 +118,9 @@ li {{
   {self._panel("Dependencias directas", direct)}
   {self._panel("Dependencias indirectas", indirect)}
 </section>
+{self._tree_panel(tree)}
 </main>
+{self._tree_script()}
 </body>
 </html>"""
 
@@ -127,20 +147,52 @@ li {{
                 selected.append(allowed[key])
         return selected
 
-    
     @staticmethod
-    def _tree(root: str, objects: list[str]) -> str:
-        if not objects:
-            return '<p class="empty">No hay dependencias.</p>'
-        items=''.join(f'<li>{escape(o)}</li>' for o in objects)
+    def _flat_tree(root: str, objects: Iterable[str]) -> ImpactNode:
+        return ImpactNode(name=root, children=[ImpactNode(name=item) for item in objects])
+
+    def _tree_panel(self, tree: ImpactNode) -> str:
         return (
-            '<article class="panel"><h2>Árbol de dependencias</h2>'
-            '<button onclick="toggleNode(\'depTree\')">Expandir / Contraer</button>'
-            '<div id="depTree" class="dependency-tree">'
-            f'<ul><li><strong>{escape(root)}</strong><ul>{items}</ul></li></ul>'
-            '</div></article>'
+            '<section class="panel tree">'
+            '<h2>Árbol de dependencias</h2>'
+            f'<ul>{self._render_tree(tree, "impact-tree")}</ul>'
+            '</section>'
         )
-@staticmethod
+
+    def _render_tree(self, node: ImpactNode, node_id: str) -> str:
+        children = list(node.children or [])
+        safe_name = escape(str(node.name))
+
+        if not children:
+            return f'<li><span class="tree-node">{safe_name}</span></li>'
+
+        child_items = "".join(
+            self._render_tree(child, f"{node_id}-{index}")
+            for index, child in enumerate(children)
+        )
+        return (
+            '<li>'
+            f'<button type="button" class="tree-node expandable" '
+            f'aria-expanded="true" aria-controls="{node_id}" '
+            f'onclick="toggleImpactNode(this, \'{node_id}\')">{safe_name}</button>'
+            f'<ul id="{node_id}">{child_items}</ul>'
+            '</li>'
+        )
+
+    @staticmethod
+    def _tree_script() -> str:
+        return """<script>
+function toggleImpactNode(button, id) {
+  const branch = document.getElementById(id);
+  if (!branch) return;
+  const collapsed = branch.hidden === true;
+  branch.hidden = !collapsed;
+  button.setAttribute('aria-expanded', collapsed ? 'true' : 'false');
+  button.classList.toggle('collapsed', !collapsed);
+}
+</script>"""
+
+    @staticmethod
     def _metric(label: str, value: int) -> str:
         return (
             '<article class="metric">'
@@ -153,32 +205,7 @@ li {{
     def _panel(title: str, objects: list[str]) -> str:
         if objects:
             content = "".join(f"<li>{escape(item)}</li>" for item in objects)
-            body = f"<ul>{content}</ul>"
+            body = f'<ul class="dependency-list">{content}</ul>'
         else:
             body = '<p class="empty">No hay objetos en esta categoría.</p>'
         return f'<article class="panel"><h2>{escape(title)}</h2>{body}</article>'
-
-
-TREE_SCRIPT = '''
-<script>
-function toggleNode(id){
- const e=document.getElementById(id);
- if(e){e.style.display=e.style.display==='none'?'block':'none';}
-}
-</script>
-'''
-
-
-    def _render_tree(self, node, level=0):
-        if node is None:
-            return ""
-        node_id=f"node_{id(node)}"
-        html=f'<li><span class="tree-node" onclick="toggleNode(\'{node_id}\')">{escape(str(getattr(node,"name","")))}<\/span>'
-        children=getattr(node,"children",[])
-        if children:
-            html+=f'<ul id="{node_id}" style="display:none">'
-            for child in children:
-                html+=self._render_tree(child, level+1)
-            html+='</ul>'
-        html+='</li>'
-        return html
