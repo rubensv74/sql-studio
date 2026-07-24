@@ -161,6 +161,35 @@ def analyze_cross_references(
     print(CrossReferenceSerializer.to_json(references, indent=indent))
     return None
 
+
+def analyze_impact(
+    paths: Iterable[str],
+    root_object: str,
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+) -> Path | None:
+    """Analyze SQL files and print or write an impact report as JSON."""
+
+    from sqlstudio.impact_analysis import ImpactAnalyzer, ImpactResultSerializer
+
+    files = _collect_sql_files(paths, recursive=recursive)
+    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+    result = ImpactAnalyzer().analyze_many(sql_texts, root_object)
+    indent = None if compact else 2
+    payload = ImpactResultSerializer.to_json(result, indent=indent)
+
+    if output:
+        destination = Path(output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(payload, encoding="utf-8")
+        print(destination)
+        return destination
+
+    print(payload)
+    return None
+
 def build_parser():
     import argparse
 
@@ -223,6 +252,32 @@ def build_parser():
         help="Emit compact JSON without indentation",
     )
 
+    impact = sub.add_parser(
+        "impact",
+        help="Analyze transitive SQL dependencies from a selected object",
+    )
+    impact.add_argument(
+        "root_object",
+        help="Qualified SQL object used as the analysis root",
+    )
+    impact.add_argument(
+        "paths",
+        nargs="+",
+        help="SQL files or directories to analyze",
+    )
+    impact.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
+    impact.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Search supplied directories recursively",
+    )
+    impact.add_argument(
+        "--compact",
+        action="store_true",
+        help="Emit compact JSON without indentation",
+    )
+
     return ap
 
 
@@ -249,6 +304,14 @@ def main() -> int:
         elif args.cmd == "cross-references":
             analyze_cross_references(
                 args.paths,
+                output=args.output,
+                recursive=args.recursive,
+                compact=args.compact,
+            )
+        elif args.cmd == "impact":
+            analyze_impact(
+                args.paths,
+                args.root_object,
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
