@@ -34,7 +34,8 @@ jobs:
           python -c "from sqlstudio.impact_analysis import ImpactAnalysisEngine, ImpactReportExporter"
           python -c "from sqlstudio.circular_dependencies import CircularDependencyEngine, CircularDependencySerializer"
           python -c "from sqlstudio.dead_objects import DeadObjectAnalyzer, DeadObjectSerializer"
-          python -c "from sqlstudio import DeadObjectEngine"
+          python -c "from sqlstudio.rules import StaticAnalysisAnalyzer, StaticAnalysisRuleEngine, StaticAnalysisSerializer"
+          python -c "from sqlstudio import DeadObjectEngine, Severity, StaticAnalysisRuleEngine"
 
       - name: Run unit tests
         shell: bash
@@ -53,6 +54,7 @@ jobs:
           fi
 
       - name: Validate CLI
+        shell: bash
         run: |
           python cli/sqlstudio.py --help
           python cli/sqlstudio.py parse examples/sample_procedure.sql > /tmp/parse.json
@@ -67,4 +69,15 @@ jobs:
           python -c "import json; p=json.load(open('/tmp/cycles.json')); assert p['summary']['cycle_count'] == 1; assert p['summary']['object_count'] == 2"
           python cli/sqlstudio.py dead-objects examples/dead_objects --entry-point dbo.Entry > /tmp/dead.json
           python -m json.tool /tmp/dead.json > /dev/null
-          python -c "import json; p=json.load(open('/tmp/dead.json')); assert p['classification'] == 'candidate_only'; assert p['summary']['defined_object_count'] == 3; assert p['summary']['candidate_object_count'] == 1; assert p['dead_object_candidates'][0]['members'][0]['name'] == 'dbo.Orphan'; assert p['limitations']['safe_to_delete'] is False"
+          python -c "import json; p=json.load(open('/tmp/dead.json')); assert p['classification'] == 'candidate_only'; assert p['summary']['candidate_object_count'] == 1; assert p['dead_object_candidates'][0]['members'][0]['name'] == 'dbo.Orphan'; assert p['limitations']['safe_to_delete'] is False"
+          python cli/sqlstudio.py analyze examples/dead_objects --entry-point dbo.Entry > /tmp/rules.json
+          python -m json.tool /tmp/rules.json > /dev/null
+          python -c "import json; p=json.load(open('/tmp/rules.json')); assert p['summary']['rule_count'] == 2; assert p['summary']['warning_count'] == 1; assert p['findings'][0]['rule_id'] == 'SQL002'; assert p['findings'][0]['objects'] == ['dbo.Orphan']"
+          python cli/sqlstudio.py analyze examples/circular_dependencies --rule SQL001 > /tmp/rules-cycle.json
+          python -c "import json; p=json.load(open('/tmp/rules-cycle.json')); assert p['summary']['error_count'] == 1; assert p['findings'][0]['rule_id'] == 'SQL001'"
+          set +e
+          python cli/sqlstudio.py analyze examples/dead_objects --entry-point dbo.Entry --fail-on warning > /tmp/rules-gate.json
+          gate_status=$?
+          set -e
+          test "$gate_status" -eq 2
+          python -m json.tool /tmp/rules-gate.json > /dev/null

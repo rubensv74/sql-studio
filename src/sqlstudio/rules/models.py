@@ -59,16 +59,25 @@ class Finding:
         if not message:
             raise ValueError("Finding message cannot be empty")
 
-        normalized_objects = tuple(
-            sorted(
-                {name.strip() for name in self.objects if name and name.strip()},
-                key=str.casefold,
-            )
+        canonical_objects: dict[str, str] = {}
+        for raw_name in self.objects:
+            name = raw_name.strip()
+            if name:
+                canonical_objects.setdefault(name.casefold(), name)
+        normalized_objects = tuple(sorted(canonical_objects.values(), key=str.casefold))
+
+        normalized_property_map: dict[str, tuple[str, RulePropertyValue]] = {}
+        for raw_key, value in self.properties:
+            key = raw_key.strip()
+            if not key:
+                raise ValueError("Finding property key cannot be empty")
+            folded = key.casefold()
+            if folded in normalized_property_map:
+                raise ValueError("Finding property keys must be unique")
+            normalized_property_map[folded] = (key, value)
+        normalized_properties = tuple(
+            sorted(normalized_property_map.values(), key=lambda item: item[0].casefold())
         )
-        normalized_properties = tuple(sorted(self.properties, key=lambda item: item[0].casefold()))
-        property_keys = [key.casefold() for key, _ in normalized_properties]
-        if len(property_keys) != len(set(property_keys)):
-            raise ValueError("Finding property keys must be unique")
 
         object.__setattr__(self, "rule_id", rule_id)
         object.__setattr__(self, "severity", Severity.parse(self.severity))
@@ -90,12 +99,26 @@ class RuleResult:
 
     def __post_init__(self) -> None:
         rule_id = self.rule_id.strip().upper()
+        title = self.title.strip()
         if not rule_id:
             raise ValueError("RuleResult rule_id cannot be empty")
+        if not title:
+            raise ValueError("RuleResult title cannot be empty")
         if any(finding.rule_id != rule_id for finding in self.findings):
             raise ValueError("All findings in a RuleResult must match its rule_id")
+
+        property_map: dict[str, tuple[str, RulePropertyValue]] = {}
+        for raw_key, value in self.properties:
+            key = raw_key.strip()
+            if not key:
+                raise ValueError("RuleResult property key cannot be empty")
+            folded = key.casefold()
+            if folded in property_map:
+                raise ValueError("RuleResult property keys must be unique")
+            property_map[folded] = (key, value)
+
         object.__setattr__(self, "rule_id", rule_id)
-        object.__setattr__(self, "title", self.title.strip())
+        object.__setattr__(self, "title", title)
         object.__setattr__(self, "default_severity", Severity.parse(self.default_severity))
         object.__setattr__(
             self,
@@ -114,7 +137,7 @@ class RuleResult:
         object.__setattr__(
             self,
             "properties",
-            tuple(sorted(self.properties, key=lambda item: item[0].casefold())),
+            tuple(sorted(property_map.values(), key=lambda item: item[0].casefold())),
         )
 
 
