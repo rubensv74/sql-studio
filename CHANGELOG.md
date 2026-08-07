@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.16.0 - 2026-08-08
+
+### Added
+- Standard Python packaging through `pyproject.toml` and setuptools PEP 517 backend.
+- Buildable source distribution and platform-independent wheel for SQL Studio.
+- Installed `sqlstudio` console entry point backed by `sqlstudio.cli:main`.
+- Public `sqlstudio.__version__` and `sqlstudio --version` support.
+- Packaging regression tests and CI gates that build and install the wheel before executing a real analysis outside the repository checkout.
+- Workflow artifact upload for generated `dist/` packages.
+- Complete MIT license text included in package metadata/distributions.
+
+### Changed
+- Canonical CLI implementation moved to `src/sqlstudio/cli.py`.
+- `cli/sqlstudio.py` is now a backward-compatible wrapper that reexports the canonical callable surface.
+- `core/version.txt` is retained as a compatibility mirror of the canonical package version.
+- README, CLI, architecture and roadmap now treat the installed `sqlstudio` command as the primary invocation.
+- Roadmap advances to profiler/benchmark scope reassessment.
+
+### Fixed
+- Repository-wrapper module compatibility is preserved for tests and consumers that import CLI helper functions directly.
+
 ## 0.15.0 - 2026-08-08
 
 ### Added

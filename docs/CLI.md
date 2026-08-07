@@ -1,6 +1,21 @@
 # SQL Studio CLI
 
-The repository-local CLI is `cli/sqlstudio.py` and targets Python 3.12+.
+SQL Studio targets Python 3.12+ and installs the console command `sqlstudio`.
+
+The canonical implementation lives in `src/sqlstudio/cli.py`. `cli/sqlstudio.py` remains a repository-checkout compatibility wrapper and reexports the same callable surface used by existing tests/consumers.
+
+## Installation
+
+```bash
+python -m pip install .
+sqlstudio --version
+```
+
+For editable development installs:
+
+```bash
+python -m pip install -e .
+```
 
 ## Commands
 
@@ -37,17 +52,10 @@ usage: sqlstudio analyze [-h] [-o OUTPUT] [-r] [--compact]
 Examples:
 
 ```bash
-# Run all built-in rules
-python cli/sqlstudio.py analyze sql/ --recursive
-
-# Supply known external entry points for rules such as SQL002
-python cli/sqlstudio.py analyze sql/ --recursive --entry-point dbo.ApiEntry
-
-# Run only circular-dependency detection through the common rule contract
-python cli/sqlstudio.py analyze sql/ --recursive --rule SQL001
-
-# Fail a CI gate on warnings or errors while still emitting JSON
-python cli/sqlstudio.py analyze sql/ --recursive \
+sqlstudio analyze sql/ --recursive
+sqlstudio analyze sql/ --recursive --entry-point dbo.ApiEntry
+sqlstudio analyze sql/ --recursive --rule SQL001
+sqlstudio analyze sql/ --recursive \
   --entry-point dbo.ApiEntry \
   --fail-on warning \
   --output reports/static-analysis.json
@@ -73,37 +81,9 @@ The report contains:
 - `rules`: execution metadata for every selected rule;
 - `findings`: normalized rule ID, severity, title/message, affected objects and properties.
 
-Example fragment:
-
-```json
-{
-  "schema_version": "1.0",
-  "summary": {
-    "rule_count": 2,
-    "finding_count": 1,
-    "error_count": 0,
-    "warning_count": 1,
-    "info_count": 0
-  },
-  "findings": [
-    {
-      "rule_id": "SQL002",
-      "severity": "warning",
-      "objects": ["dbo.Orphan"],
-      "properties": {
-        "classification": "candidate_only",
-        "safe_to_delete": false
-      }
-    }
-  ]
-}
-```
-
 ### `--fail-on`
 
-`--fail-on info|warning|error` turns findings into an optional CI quality gate.
-
-Severity order is `info < warning < error`. For example, `--fail-on warning` returns `2` for warnings or errors, while `--fail-on error` ignores warning-only findings.
+`--fail-on info|warning|error` turns findings into an optional CI quality gate. Severity order is `info < warning < error`.
 
 The report is still written/printed before exit code `2` is returned.
 
@@ -115,21 +95,39 @@ usage: sqlstudio dead-objects [-h] [-o OUTPUT] [-r] [--compact]
                               paths [paths ...]
 ```
 
-`--entry-point` declares a locally defined SQL object known to be invoked from outside the analyzed SQL graph. The command remains a dedicated compatibility surface and retains Dead Object JSON schema `1.0`.
+`--entry-point` declares a locally defined SQL object known to be invoked from outside the analyzed SQL graph. The command retains Dead Object JSON schema `1.0`.
 
 A finding is a candidate only; it is not deletion proof. Circular islands are grouped using the SCC contract, triggers are excluded as implicit entry objects, and `Unknown`/synthetic `Script` nodes are never dead-object candidates.
 
 ## Other analysis commands
 
 ```bash
-python cli/sqlstudio.py dependencies sql/ --recursive
-python cli/sqlstudio.py cross-references sql/ --recursive
-python cli/sqlstudio.py impact sales.Orders sql/ --recursive
-python cli/sqlstudio.py circular-dependencies sql/ --recursive
-python cli/sqlstudio.py dead-objects sql/ --recursive --entry-point dbo.ApiEntry
+sqlstudio dependencies sql/ --recursive
+sqlstudio cross-references sql/ --recursive
+sqlstudio impact sales.Orders sql/ --recursive
+sqlstudio circular-dependencies sql/ --recursive
+sqlstudio dead-objects sql/ --recursive --entry-point dbo.ApiEntry
 ```
 
 JSON analysis commands support `-o/--output`, `-r/--recursive` and `--compact`. `impact` additionally supports `--html FILE`.
+
+## Version
+
+```bash
+sqlstudio --version
+```
+
+The output is `sqlstudio <package-version>` and is derived from `sqlstudio.__version__`.
+
+## Compatibility wrapper
+
+Existing repository-local automation can continue to use:
+
+```bash
+python cli/sqlstudio.py analyze sql/ --recursive
+```
+
+The wrapper imports and reexports the canonical `sqlstudio.cli` callables; business logic is not duplicated there.
 
 ## Exit codes
 
@@ -141,16 +139,7 @@ JSON analysis commands support `-o/--output`, `-r/--recursive` and `--compact`. 
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
+python -m build
 ```
 
-Target Rule Engine consolidation with:
-
-```bash
-PYTHONPATH=src python -m unittest \
-  tests/test_static_analysis_rule_engine.py \
-  tests/test_static_analysis_analyzer.py \
-  tests/test_static_analysis_serialization.py \
-  tests/test_cli_static_analysis.py
-```
-
-GitHub Actions also runs compile, import and CLI smoke gates on Python 3.12, including real SQL001/SQL002 findings and the exit-code-2 severity gate.
+GitHub Actions also installs the generated wheel and invokes `sqlstudio` from `/tmp` with `PYTHONPATH` empty. This proves the console entry point is using the installed distribution rather than repository source-path leakage.

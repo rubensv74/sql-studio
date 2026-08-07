@@ -31,11 +31,13 @@ jobs:
       - name: Validate package imports
         run: |
           python -c "import sqlstudio"
+          python -c "from sqlstudio import __version__"
           python -c "from sqlstudio.impact_analysis import ImpactAnalysisEngine, ImpactReportExporter"
           python -c "from sqlstudio.circular_dependencies import CircularDependencyEngine, CircularDependencySerializer"
           python -c "from sqlstudio.dead_objects import DeadObjectAnalyzer, DeadObjectSerializer"
           python -c "from sqlstudio.rules import StaticAnalysisAnalyzer, StaticAnalysisRuleEngine, StaticAnalysisSerializer"
           python -c "from sqlstudio import DeadObjectEngine, Severity, StaticAnalysisRuleEngine"
+          python -c "from sqlstudio.cli import main, build_parser"
 
       - name: Run unit tests
         shell: bash
@@ -53,9 +55,10 @@ jobs:
             exit "$status"
           fi
 
-      - name: Validate CLI
+      - name: Validate repository CLI wrapper
         shell: bash
         run: |
+          python cli/sqlstudio.py --version
           python cli/sqlstudio.py --help
           python cli/sqlstudio.py parse examples/sample_procedure.sql > /tmp/parse.json
           python cli/sqlstudio.py dependencies examples/sample_procedure.sql > /tmp/dependencies.json
@@ -81,3 +84,31 @@ jobs:
           set -e
           test "$gate_status" -eq 2
           python -m json.tool /tmp/rules-gate.json > /dev/null
+
+      - name: Build distributions
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --quiet build
+          python -m build
+          test -f dist/sql_studio-0.16.0-py3-none-any.whl
+          test -f dist/sql_studio-0.16.0.tar.gz
+
+      - name: Validate installed wheel and console entry point
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --force-reinstall --no-deps dist/sql_studio-0.16.0-py3-none-any.whl
+          repo="$GITHUB_WORKSPACE"
+          cd /tmp
+          version=$(PYTHONPATH= sqlstudio --version)
+          test "$version" = "sqlstudio 0.16.0"
+          PYTHONPATH= python -c "import importlib.metadata as m, sqlstudio; assert sqlstudio.__version__ == '0.16.0'; assert m.version('sql-studio') == '0.16.0'; assert '/src/sqlstudio/' not in sqlstudio.__file__.replace('\\\\', '/')"
+          PYTHONPATH= sqlstudio analyze "$repo/examples/dead_objects" --entry-point dbo.Entry > /tmp/installed-rules.json
+          PYTHONPATH= python -m json.tool /tmp/installed-rules.json > /dev/null
+          PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-rules.json')); assert p['summary']['rule_count'] == 2; assert p['findings'][0]['rule_id'] == 'SQL002'"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: sql-studio-dist-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
