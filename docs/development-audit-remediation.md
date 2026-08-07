@@ -15,6 +15,8 @@ La auditoría original se conserva sin modificaciones como fotografía históric
 
 Los hallazgos que bloqueaban continuar el roadmap han sido remediados. El baseline `0.12.0` puede considerarse **estabilizado y reproducible**.
 
+Este documento es el registro de cierre y debe consultarse junto con la auditoría histórica antes de reutilizar sus hallazgos como trabajo pendiente.
+
 ## 2. Hallazgos cerrados
 
 ### P0.1 — Semántica de Impact Analysis
