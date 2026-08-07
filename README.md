@@ -101,6 +101,7 @@ Legacy or experimental areas such as benchmark/profiler are not considered compl
 - [Architecture](docs/architecture.md)
 - [CLI](docs/CLI.md)
 - [Impact Report contract](docs/impact-report.md)
+- [Circular Dependency Detection contract](docs/circular-dependency-detection.md)
 - [Roadmap](docs/roadmap.md)
 - [Development audit — historical baseline](docs/development-audit.md)
 - [Development audit — remediation status](docs/development-audit-remediation.md)
