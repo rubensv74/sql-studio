@@ -4,6 +4,7 @@ from typing import Sequence
 
 from ..ast import Parameter, SqlObject, Token
 from ..context import ParserContext
+from ..names import split_qualified_name
 from ..token_stream import TokenStream
 from .base import StatementParser
 
@@ -67,12 +68,8 @@ class CreateStatementParser(StatementParser):
         for token in tokens[object_keyword_index + 1 :]:
             if token.kind != "identifier" or token.value.startswith("@"):
                 continue
-            qualified_parts = [part for part in token.value.split(".") if part]
-            if not qualified_parts:
-                return None, None
-            if len(qualified_parts) == 1:
-                return qualified_parts[0], None
-            return qualified_parts[-1], qualified_parts[-2]
+            name, schema, _database = split_qualified_name(token.value)
+            return name, schema
 
         return None, None
 
