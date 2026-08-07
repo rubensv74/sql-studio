@@ -27,6 +27,7 @@ Available commands:
 | `dependencies` | Build the directed SQL dependency graph. |
 | `cross-references` | Export direct cross references. |
 | `impact` | Find objects that depend on a selected object, transitively. |
+| `circular-dependencies` | Detect strongly connected dependency components and self-references. |
 
 ## Dependency direction
 
@@ -38,12 +39,9 @@ source -> target
 
 means `source` depends on `target`.
 
-Consequently, `dependencies` describes the graph itself, while `impact ROOT`
-starts at `ROOT` and walks incoming dependents to answer:
-
-> What can be affected if ROOT changes?
-
-This is intentionally different from asking what `ROOT` depends on.
+Consequently, `dependencies` describes the graph itself, `impact ROOT` walks
+incoming dependents, and `circular-dependencies` analyzes closed loops in the
+canonical directed graph.
 
 ## `new-sprint`
 
@@ -79,8 +77,8 @@ parameters, variables, references, temporary tables and dynamic SQL fragments.
 
 ## Shared SQL input rules
 
-`dependencies`, `cross-references` and `impact` accept one or more SQL files or
-directories.
+`dependencies`, `cross-references`, `impact` and `circular-dependencies` accept
+one or more SQL files or directories.
 
 - Directories are non-recursive by default.
 - Use `-r` / `--recursive` for nested directories.
@@ -148,14 +146,8 @@ Examples:
 
 ```bash
 python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql
-
-python cli/sqlstudio.py impact sales.Orders sql/ \
-  --recursive \
-  --output reports/orders-impact.json
-
-python cli/sqlstudio.py impact sales.Orders sql/ \
-  --recursive \
-  --html reports/orders-impact.html
+python cli/sqlstudio.py impact sales.Orders sql/ --recursive --output reports/orders-impact.json
+python cli/sqlstudio.py impact sales.Orders sql/ --recursive --html reports/orders-impact.html
 ```
 
 ### JSON output
@@ -181,16 +173,53 @@ schema `1.0`. Adding it to JSON requires a new schema version.
 
 ### HTML output
 
-`--html FILE` writes a self-contained report containing:
+`--html FILE` writes a self-contained report containing the root object, total
+impact, direct impacts, indirect impacts and a navigable impact tree.
 
-- the root object;
-- total impact;
-- direct impacts;
-- indirect impacts;
-- a navigable impact tree.
+## `circular-dependencies`
 
-Direct impact is derived from the first level of the tree, not guessed by the
-exporter.
+```text
+usage: sqlstudio circular-dependencies [-h] [-o OUTPUT] [-r] [--compact]
+                                       paths [paths ...]
+```
+
+Examples:
+
+```bash
+python cli/sqlstudio.py circular-dependencies sql/ --recursive
+python cli/sqlstudio.py circular-dependencies sql/ --recursive --output reports/cycles.json
+python cli/sqlstudio.py circular-dependencies a.sql b.sql --compact
+```
+
+The command reports one finding per strongly connected component (SCC), rather
+than enumerating every possible cyclic path. A one-object SCC is reported only
+when the object has a self-reference.
+
+Representative schema `1.0`:
+
+```json
+{
+  "schema_version": "1.0",
+  "summary": {
+    "cycle_count": 1,
+    "object_count": 2
+  },
+  "circular_dependencies": [
+    {
+      "members": ["dbo.A", "dbo.B"],
+      "is_self_reference": false,
+      "edges": [
+        {"source": "dbo.A", "target": "dbo.B", "kind": "references"},
+        {"source": "dbo.B", "target": "dbo.A", "kind": "references"}
+      ]
+    }
+  ]
+}
+```
+
+The ordering of findings, members and internal edges is deterministic. Object
+identity is case-insensitive while output preserves the canonical name already
+stored in the dependency graph.
 
 ## Output options
 
@@ -202,17 +231,12 @@ For JSON-producing analysis commands:
 | `-r`, `--recursive` | Search supplied directories recursively. |
 | `--compact` | Emit JSON without indentation. |
 
-`impact` additionally supports:
-
-| Option | Meaning |
-| --- | --- |
-| `--html FILE` | Write the impact report as self-contained HTML. |
-
-Parent directories are created for JSON and HTML report destinations.
+`impact` additionally supports `--html FILE` for a self-contained HTML report.
+Parent directories are created for report destinations.
 
 ## Exit codes
 
-- `0`: success.
+- `0`: success, including a valid analysis that finds no circular dependencies.
 - `1`: handled input, validation, permission or file-system error.
 
 Handled errors are written to stderr.
@@ -225,27 +249,14 @@ Run the complete suite:
 PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Useful targeted runs:
+Circular Dependency Detection can be targeted with:
 
 ```bash
 PYTHONPATH=src python -m unittest \
-  tests/test_dependency_graph.py \
-  tests/test_dependency_resolver.py \
-  tests/test_dependency_analyzer.py \
-  tests/test_cli_dependencies.py
-
-PYTHONPATH=src python -m unittest \
-  tests/test_cross_reference_engine.py \
-  tests/test_cross_reference_analyzer.py \
-  tests/test_cli_cross_references.py
-
-PYTHONPATH=src python -m unittest \
-  tests/test_impact_analysis_engine.py \
-  tests/test_impact_analyzer.py \
-  tests/test_impact_result_serialization.py \
-  tests/test_impact_report_generator.py \
-  tests/test_impact_report_exporter.py \
-  tests/test_cli_impact.py
+  tests/test_circular_dependency_engine.py \
+  tests/test_circular_dependency_analyzer.py \
+  tests/test_circular_dependency_serialization.py \
+  tests/test_cli_circular_dependencies.py
 ```
 
 The GitHub Actions workflow runs the full suite on Python 3.12 and also performs

@@ -130,7 +130,6 @@ def analyze_dependencies(
     return None
 
 
-
 def analyze_cross_references(
     paths: Iterable[str],
     *,
@@ -197,6 +196,39 @@ def analyze_impact(
 
     print(payload)
     return None
+
+
+def analyze_circular_dependencies(
+    paths: Iterable[str],
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+) -> Path | None:
+    """Detect circular SQL dependencies and emit deterministic JSON."""
+
+    from sqlstudio.circular_dependencies import (
+        CircularDependencyAnalyzer,
+        CircularDependencySerializer,
+    )
+
+    files = _collect_sql_files(paths, recursive=recursive)
+    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+    cycles = CircularDependencyAnalyzer().analyze_many(sql_texts)
+    indent = None if compact else 2
+
+    if output:
+        destination = CircularDependencySerializer.write_json(
+            cycles,
+            output,
+            indent=indent,
+        )
+        print(destination)
+        return destination
+
+    print(CircularDependencySerializer.to_json(cycles, indent=indent))
+    return None
+
 
 def build_parser():
     import argparse
@@ -287,6 +319,32 @@ def build_parser():
         help="Emit compact JSON without indentation",
     )
 
+    cycles = sub.add_parser(
+        "circular-dependencies",
+        help="Detect circular SQL dependency components and emit JSON",
+    )
+    cycles.add_argument(
+        "paths",
+        nargs="+",
+        help="SQL files or directories to analyze",
+    )
+    cycles.add_argument(
+        "-o",
+        "--output",
+        help="Write JSON to this file instead of stdout",
+    )
+    cycles.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Search supplied directories recursively",
+    )
+    cycles.add_argument(
+        "--compact",
+        action="store_true",
+        help="Emit compact JSON without indentation",
+    )
+
     return ap
 
 
@@ -325,6 +383,13 @@ def main() -> int:
                 recursive=args.recursive,
                 compact=args.compact,
                 html=args.html,
+            )
+        elif args.cmd == "circular-dependencies":
+            analyze_circular_dependencies(
+                args.paths,
+                output=args.output,
+                recursive=args.recursive,
+                compact=args.compact,
             )
         else:
             ap.print_help()
