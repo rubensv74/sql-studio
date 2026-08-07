@@ -1,3 +1,4 @@
+from ._version import __version__
 from .circular_dependencies import (
     CircularDependency,
     CircularDependencyAnalyzer,
@@ -38,6 +39,7 @@ from .rules import (
 )
 
 __all__ = [
+    "__version__",
     "CircularDependency",
     "CircularDependencyAnalyzer",
     "CircularDependencyEngine",
