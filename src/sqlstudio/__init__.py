@@ -1,3 +1,9 @@
+from .circular_dependencies import (
+    CircularDependency,
+    CircularDependencyAnalyzer,
+    CircularDependencyEngine,
+    CircularDependencySerializer,
+)
 from .dependencies import (
     DependencyAnalyzer,
     DependencyEdge,
@@ -10,6 +16,10 @@ from .parser import Parameter, Reference, SQLParser, SqlDocument, SqlObject, Tok
 from .repository import RepositoryEngine
 
 __all__ = [
+    "CircularDependency",
+    "CircularDependencyAnalyzer",
+    "CircularDependencyEngine",
+    "CircularDependencySerializer",
     "DependencyAnalyzer",
     "DependencyEdge",
     "DependencyGraph",
