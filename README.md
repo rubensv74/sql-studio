@@ -2,8 +2,8 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.12.0`  
-**Development status:** stabilized MVP core; next functional milestone is Circular Dependency Detection.
+**Current version:** `0.13.0`  
+**Development status:** stabilized MVP core with Circular Dependency Detection; next functional milestone is Dead Object Detection.
 
 ## Implemented capabilities
 
@@ -14,6 +14,7 @@ SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 - dependency serialization;
 - cross-reference analysis;
 - transitive impact analysis;
+- circular dependency detection using strongly connected components;
 - JSON and self-contained HTML impact reports;
 - command-line interface;
 - automated validation in GitHub Actions.
@@ -32,7 +33,8 @@ Therefore:
 
 - `dependencies_of(A)` answers **what A uses**;
 - `dependents_of(A)` answers **what uses A**;
-- Impact Analysis follows `dependents_of()` transitively to answer **what can be affected if A changes**.
+- Impact Analysis follows `dependents_of()` transitively to answer **what can be affected if A changes**;
+- Circular Dependency Detection analyzes the canonical `source -> target` graph and reports strongly connected components, including self-references.
 
 This distinction is part of the public architecture contract and is covered by tests.
 
@@ -47,7 +49,19 @@ python cli/sqlstudio.py dependencies examples/sample_procedure.sql
 python cli/sqlstudio.py cross-references examples/sample_procedure.sql
 python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql
 python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql --html reports/impact.html
+python cli/sqlstudio.py circular-dependencies sql/ --recursive
 ```
+
+## Circular dependency contract
+
+A circular dependency finding represents one strongly connected component (SCC), not every possible cyclic path through that component. This avoids exponential duplicate output while preserving the complete set of objects and internal dependency edges involved in the circularity.
+
+A component is reported when:
+
+- it contains two or more mutually reachable SQL objects; or
+- it contains one object with a self-referencing dependency.
+
+Output order is deterministic and object identity is case-insensitive while preserving canonical casing.
 
 ## Validation
 
@@ -63,7 +77,7 @@ GitHub Actions also validates:
 - bytecode compilation;
 - package imports;
 - the complete unit-test suite;
-- CLI help and smoke commands.
+- CLI help and smoke commands, including circular dependency detection.
 
 ## Repository layout
 
@@ -73,6 +87,7 @@ src/sqlstudio/              Production Python package
   dependencies/             Dependency graph and resolver
   cross_reference/          Incoming/outgoing cross references
   impact_analysis/          Change-impact traversal and reporting
+  circular_dependencies/    Strongly connected component cycle detection
 cli/sqlstudio.py            Repository-local CLI
 tests/                      Automated tests
 docs/                       Architecture, CLI and functional contracts
