@@ -60,5 +60,6 @@ jobs:
           python -m json.tool /tmp/impact.json > /dev/null
           python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql --html /tmp/impact.html
           test -s /tmp/impact.html
-          python cli/sqlstudio.py circular-dependencies examples/sample_procedure.sql > /tmp/cycles.json
+          python cli/sqlstudio.py circular-dependencies examples/circular_dependencies > /tmp/cycles.json
           python -m json.tool /tmp/cycles.json > /dev/null
+          python -c "import json; p=json.load(open('/tmp/cycles.json')); assert p['summary']['cycle_count'] == 1; assert p['summary']['object_count'] == 2"
