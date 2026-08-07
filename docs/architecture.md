@@ -17,6 +17,7 @@ SQL files
   -> DependencyGraph
        -> CrossReference Engine
        -> Impact Analysis Engine
+       -> Circular Dependency Engine
   -> JSON / HTML / CLI
 ```
 
@@ -50,8 +51,9 @@ where `source` depends on `target`.
 - `dependencies_of(name)`: outgoing targets used by `name`;
 - `dependents_of(name)`: incoming sources that depend on `name`.
 
-Changing this direction would break Cross Reference and Impact Analysis
-semantics and requires an explicit architecture decision.
+Changing this direction would break Cross Reference, Impact Analysis and
+Circular Dependency Detection semantics and requires an explicit architecture
+decision.
 
 ## 5. Cross Reference Engine
 
@@ -98,7 +100,43 @@ The HTML report derives its classification from that tree.
 `ImpactResultSerializer` schema `1.0` remains intentionally flat and does not
 serialize the tree. A future JSON tree contract must use a new schema version.
 
-## 7. CLI boundary
+## 7. Circular Dependency Engine
+
+Circular Dependency Detection answers:
+
+> Which groups of SQL objects form closed dependency loops?
+
+`CircularDependencyEngine` operates directly on the canonical
+`DependencyGraph`. It computes strongly connected components using Tarjan's
+algorithm.
+
+A finding is returned when:
+
+- a strongly connected component contains two or more objects; or
+- a single-object component contains a self-referencing edge.
+
+A finding contains the deterministically sorted member names and every internal
+dependency edge between those members. SQL object identity is compared
+case-insensitively while the graph's canonical casing is preserved in output.
+
+### Why SCCs instead of enumerated paths
+
+One strongly connected component can contain many possible cyclic paths.
+Enumerating every path can grow exponentially and produces duplicate
+representations of the same architectural problem. SQL Studio therefore uses
+one SCC as the stable unit of circular-dependency reporting.
+
+Main components:
+
+- `CircularDependency`
+- `CircularDependencyEngine`
+- `CircularDependencyAnalyzer`
+- `CircularDependencySerializer`
+
+JSON schema `1.0` includes a summary plus the members, self-reference flag and
+internal edges of each circular component.
+
+## 8. CLI boundary
 
 `cli/sqlstudio.py` is a repository-local adapter. It is responsible for:
 
@@ -109,12 +147,13 @@ serialize the tree. A future JSON tree contract must use a new schema version.
 
 Business semantics belong in `src/sqlstudio`, not in CLI conditionals.
 
-## 8. Validation boundary
+## 9. Validation boundary
 
 The baseline targets Python 3.12+. GitHub Actions compiles the code, validates
-imports, runs the complete unit-test suite and exercises CLI smoke paths.
+imports, runs the complete unit-test suite and exercises CLI smoke paths,
+including `circular-dependencies`.
 
-## 9. Deferred architecture
+## 10. Deferred architecture
 
 Packaging/installation, automated profiling, benchmarking and higher-level rule
 engines remain outside the stabilized MVP baseline until explicitly promoted by
