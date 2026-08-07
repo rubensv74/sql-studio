@@ -13,7 +13,39 @@ while src_root_text in sys.path:
     sys.path.remove(src_root_text)
 sys.path.insert(0, src_root_text)
 
-from sqlstudio.cli import main
+from sqlstudio.cli import (
+    _collect_sql_files,
+    _read_sql_texts,
+    analyze_circular_dependencies,
+    analyze_cross_references,
+    analyze_dead_objects,
+    analyze_dependencies,
+    analyze_impact,
+    analyze_static_rules,
+    build_parser,
+    create_handoff,
+    create_sprint,
+    main,
+    parse_sql_file,
+    scan_repository,
+)
+
+__all__ = [
+    "_collect_sql_files",
+    "_read_sql_texts",
+    "analyze_circular_dependencies",
+    "analyze_cross_references",
+    "analyze_dead_objects",
+    "analyze_dependencies",
+    "analyze_impact",
+    "analyze_static_rules",
+    "build_parser",
+    "create_handoff",
+    "create_sprint",
+    "main",
+    "parse_sql_file",
+    "scan_repository",
+]
 
 
 if __name__ == "__main__":
