@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.17.0 - 2026-08-08
+
+### Added
+- Formal performance-tooling scope decision with explicit post-MVP re-entry gates for profiler and benchmark capabilities.
+- Repository contract test ensuring unsupported profiler/benchmark stubs do not silently return to the stabilized baseline.
+
+### Changed
+- Architecture now treats runtime profiler/benchmark tooling as a separate future observability boundary rather than an unfinished MVP subsystem.
+- Roadmap advances to representative complex T-SQL parser hardening.
+- Historical audit remediation status is aligned with the packaging, license and performance-scope decisions completed after baseline stabilization.
+
+### Removed
+- Unsupported `cli/profiler.py` template generator that performed no profiling.
+- Unsupported `cli/benchmark.py` recorder that stored caller-provided metrics without measuring them.
+- Duplicate/incomplete profiler and benchmark schemas under `profiler/`, `benchmark/` and `core/`.
+- Heading-only `benchmarks/BENCHMARK_TEMPLATE.md` artifact.
+
+### Compatibility
+- No public `sqlstudio` package API, installed console command or supported analysis schema was removed.
+
 ## 0.16.0 - 2026-08-08
 
 ### Added

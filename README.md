@@ -2,8 +2,8 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.16.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging and consolidated Rule Engine; next milestone is profiler/benchmark scope reassessment.
+**Current version:** `0.17.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging; performance tooling scope is resolved as post-MVP. Next milestone is representative T-SQL parser hardening.
 
 ## Implemented capabilities
 
@@ -45,7 +45,7 @@ python -m pip install build
 python -m build
 ```
 
-This produces a source distribution and a platform-independent wheel under `dist/`. SQL Studio is installable in this milestone but is **not automatically published to PyPI**.
+This produces a source distribution and a platform-independent wheel under `dist/`. SQL Studio is installable but is **not automatically published to PyPI**.
 
 ## Dependency semantics
 
@@ -82,6 +82,12 @@ Dead Object Detection produces **candidates only**. It never asserts that an obj
 
 A candidate can still be used by application code, SQL Agent jobs, ETL/orchestration, reporting tools, external databases, permissions-driven workflows or dynamic SQL that is not statically resolvable. Known externally invoked SQL objects can be supplied with repeatable `--entry-point` arguments. Triggers are excluded by default because their invocation is implicit.
 
+## Performance tooling boundary
+
+Runtime profiling and benchmark tooling are explicitly **post-MVP**. Earlier repository scripts only generated empty templates or stored caller-supplied metrics; they did not perform real measurement and have been removed from the supported baseline.
+
+Any future profiler/benchmark implementation must cross a documented re-entry gate covering metric provenance, database/runtime boundaries, safety, reproducibility, versioned schemas, tests and CI. See [Performance Tooling Scope Decision](docs/performance-tooling-scope.md).
+
 ## Quick start
 
 ```bash
@@ -104,7 +110,7 @@ The historical repository invocation remains supported:
 python cli/sqlstudio.py --help
 ```
 
-That file is now a compatibility wrapper over the canonical `sqlstudio.cli` implementation.
+That file is a compatibility wrapper over the canonical `sqlstudio.cli` implementation.
 
 ## Validation
 
@@ -134,13 +140,14 @@ docs/                        Architecture, CLI, packaging and functional contrac
 examples/                    Reproducible SQL examples
 ```
 
-Legacy or experimental areas such as benchmark/profiler are not considered completed MVP capabilities until their scope is explicitly decided and their behavior is implemented and tested.
+Performance profiler/benchmark concepts are deliberately outside the current production tree until the documented post-MVP re-entry gate is satisfied.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [CLI](docs/CLI.md)
 - [Packaging and installation](docs/packaging.md)
+- [Performance Tooling Scope Decision](docs/performance-tooling-scope.md)
 - [Static-analysis Rule Engine contract](docs/static-analysis-rule-engine.md)
 - [Impact Report contract](docs/impact-report.md)
 - [Circular Dependency Detection contract](docs/circular-dependency-detection.md)
