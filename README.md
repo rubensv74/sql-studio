@@ -87,7 +87,8 @@ Legacy or experimental areas such as benchmark/profiler are not considered compl
 - [CLI](docs/CLI.md)
 - [Impact Report contract](docs/impact-report.md)
 - [Roadmap](docs/roadmap.md)
-- [Development audit](docs/development-audit.md)
+- [Development audit — historical baseline](docs/development-audit.md)
+- [Development audit — remediation status](docs/development-audit-remediation.md)
 - [AI development rules](AI_DEVELOPMENT.md)
 
 ## Development rule
