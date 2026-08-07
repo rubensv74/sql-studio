@@ -1,11 +1,12 @@
 # SQL Studio CLI
 
-The command-line interface is provided by `cli/sqlstudio.py` and is designed to be executed from the repository root.
+The repository-local CLI is `cli/sqlstudio.py`.
 
 ## Requirements
 
-- Python 3.10 or later.
-- No installation step is required for repository-local execution.
+- Python 3.12 or later.
+- Run commands from the repository root.
+- No installation step is currently required.
 - SQL files are read as UTF-8; undecodable characters are ignored.
 
 ## General usage
@@ -21,341 +22,231 @@ Available commands:
 | --- | --- |
 | `new-sprint` | Create a sprint folder and starter README. |
 | `new-handoff` | Create a handoff Markdown file. |
-| `scan` | Scan a repository and emit its repository model as JSON. |
-| `parse` | Parse one SQL file and emit the parser result as JSON. |
-| `dependencies` | Build and export a SQL object dependency graph. |
-| `cross-references` | Analyze and export SQL cross-references. |
+| `scan` | Scan a repository and emit its model as JSON. |
+| `parse` | Parse one SQL file and emit detected SQL structures as JSON. |
+| `dependencies` | Build the directed SQL dependency graph. |
+| `cross-references` | Export direct cross references. |
+| `impact` | Find objects that depend on a selected object, transitively. |
+
+## Dependency direction
+
+The CLI uses the same contract as the package:
+
+```text
+source -> target
+```
+
+means `source` depends on `target`.
+
+Consequently, `dependencies` describes the graph itself, while `impact ROOT`
+starts at `ROOT` and walks incoming dependents to answer:
+
+> What can be affected if ROOT changes?
+
+This is intentionally different from asking what `ROOT` depends on.
 
 ## `new-sprint`
 
-Creates `sprints/<name>/README.md`.
-
 ```bash
-python cli/sqlstudio.py new-sprint Sprint011
+python cli/sqlstudio.py new-sprint baseline-example
 ```
+
+Creates `sprints/<name>/README.md`.
 
 ## `new-handoff`
 
-Creates `handoffs/<name>.md`.
-
 ```bash
-python cli/sqlstudio.py new-handoff sprint-010-complete
+python cli/sqlstudio.py new-handoff baseline-example
 ```
+
+Creates `handoffs/<name>.md`.
 
 ## `scan`
 
-Scans a repository folder with `RepositoryEngine` and prints JSON to standard output.
-
 ```bash
 python cli/sqlstudio.py scan .
-python cli/sqlstudio.py scan path/to/sql-repository > reports/repository.json
+python cli/sqlstudio.py scan path/to/repository > reports/repository.json
 ```
 
 ## `parse`
-
-Parses one SQL file and prints the detected SQL objects, parameters, variables, references, temporary tables, and dynamic SQL fragments.
 
 ```bash
 python cli/sqlstudio.py parse examples/sample_procedure.sql
 ```
 
-The command writes JSON to standard output, so it can be redirected:
+The command prints parser output as JSON, including detected objects,
+parameters, variables, references, temporary tables and dynamic SQL fragments.
 
-```bash
-python cli/sqlstudio.py parse examples/sample_procedure.sql \
-  > reports/sample_procedure.parse.json
-```
+## Shared SQL input rules
+
+`dependencies`, `cross-references` and `impact` accept one or more SQL files or
+directories.
+
+- Directories are non-recursive by default.
+- Use `-r` / `--recursive` for nested directories.
+- Duplicate files are removed by resolved path.
+- Inputs are processed in deterministic path order.
+- A non-`.sql` file is rejected.
+- Missing inputs or directories without SQL files return a handled error.
 
 ## `dependencies`
-
-Builds a dependency graph from one or more SQL files or directories.
 
 ```text
 usage: sqlstudio dependencies [-h] [-o OUTPUT] [-r] [--compact]
                               paths [paths ...]
 ```
 
-### Inputs
-
-Each positional `path` may be:
-
-- a `.sql` file;
-- a directory containing `.sql` files;
-- one of several files and directories supplied in the same command.
-
-Directory scans are non-recursive by default. Use `--recursive` to include nested folders.
-
-Duplicate files are removed using their resolved path, and files are processed in a deterministic order.
-
-### Options
-
-| Option | Meaning |
-| --- | --- |
-| `-o`, `--output FILE` | Write the JSON graph to `FILE` instead of standard output. Parent directories are created automatically. |
-| `-r`, `--recursive` | Search supplied directories recursively for `.sql` files. |
-| `--compact` | Emit compact JSON without indentation. |
-
-### Analyze one file
+Examples:
 
 ```bash
 python cli/sqlstudio.py dependencies examples/sample_procedure.sql
-```
-
-### Analyze several files
-
-```bash
-python cli/sqlstudio.py dependencies \
-  sql/views/active_orders.sql \
-  sql/procedures/process_orders.sql
-```
-
-### Analyze a directory
-
-```bash
-python cli/sqlstudio.py dependencies sql/
-```
-
-Only `.sql` files located directly in `sql/` are included.
-
-### Analyze a directory recursively
-
-```bash
 python cli/sqlstudio.py dependencies sql/ --recursive
-```
-
-### Write the graph to a report file
-
-```bash
-python cli/sqlstudio.py dependencies sql/ \
-  --recursive \
-  --output reports/dependencies.json
-```
-
-When `--output` is used, the CLI prints the destination path after writing the report.
-
-### Emit compact JSON
-
-```bash
+python cli/sqlstudio.py dependencies sql/ --recursive --output reports/dependencies.json
 python cli/sqlstudio.py dependencies sql/ --recursive --compact
 ```
 
-Compact output is useful for automated pipelines or when minimizing report size.
+The JSON schema contains stable node and edge collections. An edge such as:
 
-### Redirect standard output
-
-Without `--output`, the graph is printed to standard output:
-
-```bash
-python cli/sqlstudio.py dependencies sql/ --recursive \
-  > reports/dependencies.json
+```json
+{
+  "source": "reporting.ActiveOrders",
+  "target": "sales.Orders",
+  "kind": "references"
+}
 ```
 
-Prefer `--output` when possible because it creates missing parent directories automatically.
+means `reporting.ActiveOrders` depends on `sales.Orders`.
 
 ## `cross-references`
-
-Builds a cross-reference report from one or more SQL files or directories.
 
 ```text
 usage: sqlstudio cross-references [-h] [-o OUTPUT] [-r] [--compact]
                                   paths [paths ...]
 ```
 
-### Inputs
-
-Each positional `path` may be:
-
-- a `.sql` file;
-- a directory containing `.sql` files;
-- one of several files and directories supplied in the same command.
-
-Directory scans are non-recursive by default. Use `--recursive` to include nested folders. Duplicate files are removed by resolved path and processed in deterministic order.
-
-### Options
-
-| Option | Meaning |
-| --- | --- |
-| `-o`, `--output FILE` | Write the JSON report to `FILE` instead of standard output. Missing parent directories are created automatically. |
-| `-r`, `--recursive` | Search supplied directories recursively for `.sql` files. |
-| `--compact` | Emit compact JSON without indentation. |
-
-### Analyze one file
+Examples:
 
 ```bash
 python cli/sqlstudio.py cross-references examples/sample_procedure.sql
-```
-
-### Analyze several files
-
-```bash
-python cli/sqlstudio.py cross-references \
-  sql/views/active_orders.sql \
-  sql/procedures/process_orders.sql
-```
-
-### Analyze a directory recursively
-
-```bash
 python cli/sqlstudio.py cross-references sql/ --recursive
+python cli/sqlstudio.py cross-references sql/ --recursive --output reports/cross-references.json
 ```
 
-### Write the report to a file
+The report distinguishes standard reads/references from procedure executions
+according to the dependency kind produced by the parser and resolver.
+
+## `impact`
+
+```text
+usage: sqlstudio impact [-h] [-o OUTPUT] [-r] [--html HTML] [--compact]
+                        root_object paths [paths ...]
+```
+
+`root_object` is the SQL object assumed to be changed.
+
+Examples:
 
 ```bash
-python cli/sqlstudio.py cross-references sql/ \
+python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql
+
+python cli/sqlstudio.py impact sales.Orders sql/ \
   --recursive \
-  --output reports/cross-references.json
+  --output reports/orders-impact.json
+
+python cli/sqlstudio.py impact sales.Orders sql/ \
+  --recursive \
+  --html reports/orders-impact.html
 ```
 
-When `--output` is used, the CLI prints the destination path after writing the report.
+### JSON output
 
-### Emit compact JSON
-
-```bash
-python cli/sqlstudio.py cross-references sql/ --recursive --compact
-```
-
-### Cross-reference report format
-
-The JSON document contains a schema version and a stable, sorted `cross_references` collection.
-
-Representative structure:
+Impact JSON schema `1.0` is deliberately flat:
 
 ```json
 {
   "schema_version": "1.0",
-  "cross_references": [
-    {
-      "source": "dbo.ActiveOrders",
-      "target": "sales.Orders",
-      "type": "read"
-    },
-    {
-      "source": "dbo.RunReport",
-      "target": "reporting.BuildReport",
-      "type": "execute"
-    }
+  "root_object": "sales.Orders",
+  "impacted_objects": [
+    "dbo.ActiveOrders",
+    "sales.Orders"
   ]
 }
 ```
 
-The current engine emits `read` references for standard object dependencies and `execute` references for stored procedure calls.
+The root is always present in `impacted_objects`. The serializer sorts the flat
+collection for stable machine-readable output.
 
-### Exit codes and validation errors
+The hierarchical tree is currently an in-memory/HTML concern and is not part of
+schema `1.0`. Adding it to JSON requires a new schema version.
 
-The command returns `0` on success and `1` for handled input, file-system, permission, or validation errors. Errors are written to standard error.
+### HTML output
 
-```bash
-python cli/sqlstudio.py cross-references missing.sql
-python cli/sqlstudio.py cross-references README.md
-python cli/sqlstudio.py cross-references empty-folder/
-```
+`--html FILE` writes a self-contained report containing:
 
-## Dependency graph format
+- the root object;
+- total impact;
+- direct impacts;
+- indirect impacts;
+- a navigable impact tree.
 
-The JSON document contains a schema version plus stable, sorted node and edge collections.
+Direct impact is derived from the first level of the tree, not guessed by the
+exporter.
 
-Representative structure:
+## Output options
 
-```json
-{
-  "schema_version": "1.0",
-  "nodes": [
-    {
-      "name": "dbo.activeorders",
-      "kind": "view"
-    },
-    {
-      "name": "sales.orders",
-      "kind": "unknown"
-    }
-  ],
-  "edges": [
-    {
-      "source": "dbo.activeorders",
-      "target": "sales.orders",
-      "kind": "references"
-    }
-  ]
-}
-```
+For JSON-producing analysis commands:
 
-Names and kinds reflect the normalized values produced by the parser and dependency engine.
+| Option | Meaning |
+| --- | --- |
+| `-o`, `--output FILE` | Write JSON to a file instead of stdout. |
+| `-r`, `--recursive` | Search supplied directories recursively. |
+| `--compact` | Emit JSON without indentation. |
 
-## Reproducible example
+`impact` additionally supports:
 
-Create two SQL files:
+| Option | Meaning |
+| --- | --- |
+| `--html FILE` | Write the impact report as self-contained HTML. |
 
-```sql
--- sql/tables/orders.sql
-CREATE TABLE sales.Orders
-(
-    OrderId int NOT NULL
-);
-```
+Parent directories are created for JSON and HTML report destinations.
 
-```sql
--- sql/views/active_orders.sql
-CREATE VIEW reporting.ActiveOrders
-AS
-SELECT OrderId
-FROM sales.Orders;
-```
+## Exit codes
 
-Generate the report:
+- `0`: success.
+- `1`: handled input, validation, permission or file-system error.
+
+Handled errors are written to stderr.
+
+## Validation
+
+Run the complete suite:
 
 ```bash
-python cli/sqlstudio.py dependencies sql/ \
-  --recursive \
-  --output reports/dependencies.json
+PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-The resulting graph contains nodes for the created objects and an edge from `reporting.ActiveOrders` to `sales.Orders`.
-
-## Exit codes and validation errors
-
-The CLI returns:
-
-- `0` when the command completes successfully;
-- `1` when an input path is missing, a file is not SQL, no SQL files are found, a destination cannot be written, or another handled file-system/value error occurs.
-
-Examples of invalid input:
-
-```bash
-python cli/sqlstudio.py dependencies missing.sql
-python cli/sqlstudio.py dependencies README.md
-python cli/sqlstudio.py dependencies empty-folder/
-```
-
-Errors are written to standard error, which allows normal shell and CI error handling.
-
-## Running the CLI tests
-
-From the repository root:
-
-```bash
-PYTHONPATH=src python -m unittest tests/test_cli_dependencies.py
-```
-
-Run the complete Dependency Engine test set with:
+Useful targeted runs:
 
 ```bash
 PYTHONPATH=src python -m unittest \
   tests/test_dependency_graph.py \
   tests/test_dependency_resolver.py \
   tests/test_dependency_analyzer.py \
-  tests/test_dependency_serialization.py \
   tests/test_cli_dependencies.py
-```
 
-## Running the Cross Reference Engine tests
-
-From the repository root:
-
-```bash
 PYTHONPATH=src python -m unittest \
   tests/test_cross_reference_engine.py \
   tests/test_cross_reference_analyzer.py \
-  tests/test_cross_reference_serialization.py \
   tests/test_cli_cross_references.py
+
+PYTHONPATH=src python -m unittest \
+  tests/test_impact_analysis_engine.py \
+  tests/test_impact_analyzer.py \
+  tests/test_impact_result_serialization.py \
+  tests/test_impact_report_generator.py \
+  tests/test_impact_report_exporter.py \
+  tests/test_cli_impact.py
 ```
+
+The GitHub Actions workflow runs the full suite on Python 3.12 and also performs
+compile, import and CLI smoke checks.

@@ -1,24 +1,121 @@
-# Architecture
+# SQL Studio Architecture
 
-## Cross Reference Engine
+## 1. Architectural goal
 
-The Cross Reference Engine extends the Dependency Engine.
+SQL Studio performs static analysis over SQL source files without requiring a
+live database connection. The production implementation lives under
+`src/sqlstudio/`; CLI code orchestrates those APIs but does not redefine their
+semantics.
 
-### Components
+## 2. Main flow
 
-- CrossReference
-- CrossReferenceEngine
-- CrossReferenceAnalyzer
-- CrossReferenceSerializer
+```text
+SQL files
+  -> SQLParser
+  -> SqlDocument / SqlObject / Reference
+  -> DependencyResolver
+  -> DependencyGraph
+       -> CrossReference Engine
+       -> Impact Analysis Engine
+  -> JSON / HTML / CLI
+```
 
-### Flow
+## 3. Repository and parser layer
 
-SQL -> Parser -> DependencyGraph -> CrossReferenceEngine -> JSON / CLI
+### Repository Engine
 
-### Public API
+`RepositoryEngine` and the scanner model the repository and identify SQL source
+files.
 
-- analyze()
-- analyze_many()
-- incoming()
-- outgoing()
+### SQL Parser
 
+`src/sqlstudio/parser/` contains the tokenizer, token stream, parsing context,
+AST structures and statement parsers. The parser extracts SQL objects and the
+references needed by higher-level analyzers.
+
+## 4. Dependency Engine
+
+`DependencyResolver` converts parsed references into a directed graph.
+
+The canonical edge direction is:
+
+```text
+source -> target
+```
+
+where `source` depends on `target`.
+
+`DependencyGraph` therefore exposes two intentionally different navigations:
+
+- `dependencies_of(name)`: outgoing targets used by `name`;
+- `dependents_of(name)`: incoming sources that depend on `name`.
+
+Changing this direction would break Cross Reference and Impact Analysis
+semantics and requires an explicit architecture decision.
+
+## 5. Cross Reference Engine
+
+The Cross Reference Engine exposes direct relationship inspection over the
+dependency graph.
+
+Main components:
+
+- `CrossReference`
+- `CrossReferenceEngine`
+- `CrossReferenceAnalyzer`
+- `CrossReferenceSerializer`
+
+Primary operations include incoming and outgoing references plus JSON
+serialization.
+
+## 6. Impact Analysis Engine
+
+Impact Analysis answers:
+
+> Which SQL objects can be affected if the selected object changes?
+
+Because graph edges point from dependent to dependency, the engine starts at the
+root object and traverses `dependents_of()` transitively.
+
+The result contains:
+
+- `root_object`;
+- a deterministic flat `impacted_objects` collection;
+- an in-memory hierarchical `ImpactNode` tree.
+
+Cycles are handled by ancestry tracking so the traversal terminates without
+duplicating objects indefinitely.
+
+### Direct and indirect impact
+
+- direct impacts are the first-level children of the root in the impact tree;
+- indirect impacts are descendants at depth two or greater.
+
+The HTML report derives its classification from that tree.
+
+### JSON compatibility
+
+`ImpactResultSerializer` schema `1.0` remains intentionally flat and does not
+serialize the tree. A future JSON tree contract must use a new schema version.
+
+## 7. CLI boundary
+
+`cli/sqlstudio.py` is a repository-local adapter. It is responsible for:
+
+- resolving input SQL files;
+- invoking package analyzers;
+- formatting/writing output;
+- returning stable exit codes.
+
+Business semantics belong in `src/sqlstudio`, not in CLI conditionals.
+
+## 8. Validation boundary
+
+The baseline targets Python 3.12+. GitHub Actions compiles the code, validates
+imports, runs the complete unit-test suite and exercises CLI smoke paths.
+
+## 9. Deferred architecture
+
+Packaging/installation, automated profiling, benchmarking and higher-level rule
+engines remain outside the stabilized MVP baseline until explicitly promoted by
+the roadmap.
