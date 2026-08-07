@@ -14,11 +14,14 @@
 - Installable Python packaging — `pyproject.toml`, sdist, wheel and `sqlstudio` console entry point
 - Python 3.12 CI baseline with installed-wheel validation
 - Repository hygiene, full MIT license and documentation alignment
+- Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 
 ## Next
 
-1. Reassess profiler and benchmark scope against MVP goals
-2. Decide whether release/tag/PyPI automation belongs before or after the profiler/benchmark decision
+1. Harden the parser against a representative complex T-SQL fixture corpus
+2. Resolve repository hygiene around `handoff/` versus `handoffs/`
+3. Define release/tag/PyPI publication policy
+4. Evaluate `main` branch protection before the first tagged release
 
 ## Static-analysis gates
 
@@ -37,5 +40,9 @@ The canonical CLI lives inside the installable package. The repository wrapper r
 A packaging milestone is green only if CI builds sdist/wheel and proves the installed `sqlstudio` command works outside the repository with `PYTHONPATH` cleared.
 
 Publication to PyPI is not implied by installability and requires a separate release decision.
+
+## Performance tooling gate
+
+Profiler/benchmark concepts are post-MVP. They may re-enter only with an explicit user question, measured/imported metric provenance, reproducibility contract, safety boundary, versioned schema, package integration, tests and non-flaky CI strategy as defined in `docs/performance-tooling-scope.md`.
 
 No roadmap item is complete without automated CI evidence and aligned documentation/versioning.

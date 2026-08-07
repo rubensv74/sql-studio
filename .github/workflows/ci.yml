@@ -88,20 +88,23 @@ jobs:
       - name: Build distributions
         shell: bash
         run: |
+          version=$(python -c "import sqlstudio; print(sqlstudio.__version__)")
           python -m pip install --disable-pip-version-check --quiet build
           python -m build
-          test -f dist/sql_studio-0.16.0-py3-none-any.whl
-          test -f dist/sql_studio-0.16.0.tar.gz
+          test -f "dist/sql_studio-${version}-py3-none-any.whl"
+          test -f "dist/sql_studio-${version}.tar.gz"
 
       - name: Validate installed wheel and console entry point
         shell: bash
         run: |
-          python -m pip install --disable-pip-version-check --force-reinstall --no-deps dist/sql_studio-0.16.0-py3-none-any.whl
+          expected_version=$(python -c "import sqlstudio; print(sqlstudio.__version__)")
+          wheel="dist/sql_studio-${expected_version}-py3-none-any.whl"
+          python -m pip install --disable-pip-version-check --force-reinstall --no-deps "$wheel"
           repo="$GITHUB_WORKSPACE"
           cd /tmp
-          version=$(PYTHONPATH= sqlstudio --version)
-          test "$version" = "sqlstudio 0.16.0"
-          PYTHONPATH= python -c "import importlib.metadata as m, sqlstudio; assert sqlstudio.__version__ == '0.16.0'; assert m.version('sql-studio') == '0.16.0'; assert '/src/sqlstudio/' not in sqlstudio.__file__.replace('\\\\', '/')"
+          actual_version=$(PYTHONPATH= sqlstudio --version)
+          test "$actual_version" = "sqlstudio ${expected_version}"
+          EXPECTED_VERSION="$expected_version" PYTHONPATH= python -c "import importlib.metadata as m, os, sqlstudio; expected=os.environ['EXPECTED_VERSION']; assert sqlstudio.__version__ == expected; assert m.version('sql-studio') == expected; assert '/src/sqlstudio/' not in sqlstudio.__file__.replace('\\\\', '/')"
           PYTHONPATH= sqlstudio analyze "$repo/examples/dead_objects" --entry-point dbo.Entry > /tmp/installed-rules.json
           PYTHONPATH= python -m json.tool /tmp/installed-rules.json > /dev/null
           PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-rules.json')); assert p['summary']['rule_count'] == 2; assert p['findings'][0]['rule_id'] == 'SQL002'"

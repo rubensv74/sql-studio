@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tomllib
 import unittest
 from pathlib import Path
@@ -9,13 +10,14 @@ from sqlstudio.cli import build_parser
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 class PackagingMetadataTests(unittest.TestCase):
     def test_package_version_matches_compatibility_version_file(self) -> None:
         version_file = (REPO_ROOT / "core" / "version.txt").read_text(encoding="utf-8").strip()
         self.assertEqual(sqlstudio.__version__, version_file)
-        self.assertEqual(sqlstudio.__version__, "0.16.0")
+        self.assertRegex(sqlstudio.__version__, SEMVER_PATTERN)
 
     def test_pyproject_declares_installable_console_script(self) -> None:
         with (REPO_ROOT / "pyproject.toml").open("rb") as stream:

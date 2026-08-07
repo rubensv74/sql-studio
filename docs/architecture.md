@@ -126,6 +126,16 @@ The baseline targets Python 3.12+. GitHub Actions compiles sources, validates im
 
 A source-only green test suite is insufficient to validate packaging.
 
-## 12. Deferred architecture
+## 12. Performance tooling boundary
 
-Profiler/benchmark scope and publication/release automation remain separate roadmap decisions.
+Runtime profiling and performance benchmarking are **not part of the current MVP architecture**.
+
+The removed legacy artifacts did not measure workloads: the profiler created an empty template and the benchmark script persisted values supplied by the caller. They also lacked package integration, tests and one coherent schema contract.
+
+A future profiler would introduce a live/runtime database boundary with credentials, permissions, telemetry sensitivity, observer overhead and server-version concerns. A future benchmark facility would require a reproducible corpus, repeat/variance semantics, environment metadata and stable baseline comparison.
+
+Performance tooling may only re-enter after satisfying the contract in `docs/performance-tooling-scope.md`. Future implementation must live under `src/sqlstudio/` and must not silently change the repository-only static-analysis boundary of existing analyzers.
+
+## 13. Deferred architecture
+
+Publication/release automation remains a separate roadmap decision. Runtime profiler/benchmark tooling is explicitly post-MVP rather than an unfinished current subsystem.
