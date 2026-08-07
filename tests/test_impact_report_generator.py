@@ -6,22 +6,44 @@ from sqlstudio.impact_analysis import ImpactNode, ImpactReportGenerator, ImpactR
 class TestImpactReportGenerator(unittest.TestCase):
     def test_generates_metrics_and_dependency_sections(self):
         result = ImpactResult(
-            root_object="dbo.usp_Main",
-            impacted_objects=["dbo.usp_Main", "dbo.ViewA", "dbo.TableB"],
+            root_object="dbo.Table",
+            impacted_objects=["dbo.Table", "dbo.ViewA", "dbo.ProcB"],
+            tree=ImpactNode(
+                name="dbo.Table",
+                children=[
+                    ImpactNode(
+                        name="dbo.ViewA",
+                        children=[ImpactNode(name="dbo.ProcB")],
+                    )
+                ],
+            ),
+        )
+
+        html = ImpactReportGenerator().generate(result)
+
+        self.assertIn("Informe de impacto", html)
+        self.assertIn("dbo.Table", html)
+        self.assertIn("Impactos directos", html)
+        self.assertIn("Impactos indirectos", html)
+        self.assertIn("Árbol de impacto", html)
+        self.assertIn("toggleImpactNode", html)
+        self.assertIn("<strong>2</strong>", html)
+        self.assertIn("<strong>1</strong>", html)
+
+    def test_explicit_direct_objects_remain_supported(self):
+        result = ImpactResult(
+            root_object="dbo.Root",
+            impacted_objects=["dbo.Root", "dbo.Child", "dbo.Grandchild"],
         )
 
         html = ImpactReportGenerator().generate(
             result,
-            direct_objects=["dbo.ViewA"],
+            direct_objects=["dbo.Child"],
         )
 
-        self.assertIn("Informe de impacto", html)
-        self.assertIn("dbo.usp_Main", html)
-        self.assertIn("<strong>2</strong>", html)
-        self.assertIn("Dependencias directas", html)
-        self.assertIn("Dependencias indirectas", html)
-        self.assertIn("Árbol de dependencias", html)
-        self.assertIn("toggleImpactNode", html)
+        self.assertIn("Impactos directos", html)
+        self.assertIn("dbo.Child", html)
+        self.assertIn("dbo.Grandchild", html)
 
     def test_escapes_html_content(self):
         result = ImpactResult(
@@ -44,13 +66,13 @@ class TestImpactReportGenerator(unittest.TestCase):
         html = ImpactReportGenerator().generate(result)
 
         self.assertIn("<strong>1</strong>", html)
-        self.assertEqual(html.count("dbo.Child"), 2)  # category plus dependency tree
+        self.assertEqual(html.count("dbo.Child"), 2)  # category plus impact tree
         self.assertNotIn("DBO.CHILD", html)
 
     def test_renders_multilevel_tree_recursively(self):
         result = ImpactResult(
             root_object="dbo.Root",
-            impacted_objects=["dbo.Child", "dbo.Grandchild"],
+            impacted_objects=["dbo.Root", "dbo.Child", "dbo.Grandchild"],
             tree=ImpactNode(
                 name="dbo.Root",
                 children=[

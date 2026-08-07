@@ -1,6 +1,6 @@
 import unittest
 
-from sqlstudio.impact_analysis.models import ImpactResult
+from sqlstudio.impact_analysis.models import ImpactNode, ImpactResult
 from sqlstudio.impact_analysis.serialization import ImpactResultSerializer
 
 
@@ -19,6 +19,20 @@ class TestImpactResultSerializer(unittest.TestCase):
             payload["impacted_objects"],
             ["dbo.TableA", "dbo.TableB"],
         )
+
+    def test_schema_1_remains_flat_and_does_not_serialize_tree(self):
+        result = ImpactResult(
+            root_object="dbo.Table",
+            impacted_objects=["dbo.Table", "dbo.View"],
+            tree=ImpactNode(
+                name="dbo.Table",
+                children=[ImpactNode(name="dbo.View")],
+            ),
+        )
+
+        payload = ImpactResultSerializer.to_dict(result)
+
+        self.assertNotIn("tree", payload)
 
     def test_json_round_trip(self):
         original = ImpactResult(

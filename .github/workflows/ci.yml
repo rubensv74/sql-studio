@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "agent/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python sources
+        run: python -m compileall -q src cli
+
+      - name: Validate package imports
+        run: |
+          python -c "import sqlstudio"
+          python -c "from sqlstudio.impact_analysis import ImpactAnalysisEngine, ImpactReportExporter"
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set +e
+          output=$(python -m unittest discover -s tests -p "test_*.py" -v 2>&1)
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            message=$(printf '%s' "$output" | tail -n 40)
+            message=${message//'%'/'%25'}
+            message=${message//$'\r'/'%0D'}
+            message=${message//$'\n'/'%0A'}
+            echo "::error title=Unit test failure::$message"
+            exit "$status"
+          fi
+
+      - name: Validate CLI
+        run: |
+          python cli/sqlstudio.py --help
+          python cli/sqlstudio.py parse examples/sample_procedure.sql > /tmp/parse.json
+          python cli/sqlstudio.py dependencies examples/sample_procedure.sql > /tmp/dependencies.json
+          python cli/sqlstudio.py cross-references examples/sample_procedure.sql > /tmp/cross-references.json
+          python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql > /tmp/impact.json
+          python -m json.tool /tmp/impact.json > /dev/null
+          python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql --html /tmp/impact.html
+          test -s /tmp/impact.html
