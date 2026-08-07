@@ -53,6 +53,15 @@ class SQLParserTests(unittest.TestCase):
         self.assertTrue(document.objects[0].dynamic_sql)
         self.assertIn("#", document.objects[0].temporary_tables)
 
+    def test_exec_sp_executesql_is_marked_dynamic(self):
+        parser = SQLParser()
+        document = parser.parse(
+            "CREATE PROCEDURE dbo.DynamicProc AS BEGIN "
+            "EXEC sp_executesql N'SELECT 1'; END"
+        )
+
+        self.assertTrue(document.objects[0].dynamic_sql)
+
     def test_cross_database_reference(self):
         parser = SQLParser()
         document = parser.parse("SELECT * FROM OtherDb.dbo.TableA")

@@ -4,6 +4,15 @@ from .circular_dependencies import (
     CircularDependencyEngine,
     CircularDependencySerializer,
 )
+from .dead_objects import (
+    DeadObjectAnalyzer,
+    DeadObjectEngine,
+    DeadObjectExclusion,
+    DeadObjectFinding,
+    DeadObjectMember,
+    DeadObjectResult,
+    DeadObjectSerializer,
+)
 from .dependencies import (
     DependencyAnalyzer,
     DependencyEdge,
@@ -20,6 +29,13 @@ __all__ = [
     "CircularDependencyAnalyzer",
     "CircularDependencyEngine",
     "CircularDependencySerializer",
+    "DeadObjectAnalyzer",
+    "DeadObjectEngine",
+    "DeadObjectExclusion",
+    "DeadObjectFinding",
+    "DeadObjectMember",
+    "DeadObjectResult",
+    "DeadObjectSerializer",
     "DependencyAnalyzer",
     "DependencyEdge",
     "DependencyGraph",

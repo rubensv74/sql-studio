@@ -24,7 +24,16 @@ class ExecutionStatementParser(StatementParser):
                 statement_tokens,
                 index + 1,
             )
-            context.dynamic_sql = context.dynamic_sql or keyword == "SP_EXECUTESQL" or reference_name is None
+            is_sp_executesql_target = (
+                reference_name is not None
+                and reference_name.split(".")[-1].casefold() == "sp_executesql"
+            )
+            context.dynamic_sql = (
+                context.dynamic_sql
+                or keyword == "SP_EXECUTESQL"
+                or is_sp_executesql_target
+                or reference_name is None
+            )
             if reference_name is not None:
                 parts = [part for part in reference_name.split(".") if part]
                 context.add_reference(

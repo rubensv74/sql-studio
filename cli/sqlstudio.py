@@ -112,8 +112,6 @@ def analyze_dependencies(
     compact: bool = False,
     html: str | None = None,
 ) -> Path | None:
-    """Analyze SQL files and print or write their dependency graph as JSON."""
-
     from sqlstudio.dependencies import DependencyAnalyzer, DependencyGraphSerializer
 
     files = _collect_sql_files(paths, recursive=recursive)
@@ -138,12 +136,7 @@ def analyze_cross_references(
     compact: bool = False,
     html: str | None = None,
 ) -> Path | None:
-    """Analyze SQL files and print or write cross-references as JSON."""
-
-    from sqlstudio.cross_reference import (
-        CrossReferenceAnalyzer,
-        CrossReferenceSerializer,
-    )
+    from sqlstudio.cross_reference import CrossReferenceAnalyzer, CrossReferenceSerializer
 
     files = _collect_sql_files(paths, recursive=recursive)
     sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
@@ -151,11 +144,7 @@ def analyze_cross_references(
     indent = None if compact else 2
 
     if output:
-        destination = CrossReferenceSerializer.write_json(
-            references,
-            output,
-            indent=indent,
-        )
+        destination = CrossReferenceSerializer.write_json(references, output, indent=indent)
         print(destination)
         return destination
 
@@ -172,8 +161,6 @@ def analyze_impact(
     compact: bool = False,
     html: str | None = None,
 ) -> Path | None:
-    """Analyze SQL files and print or write an impact report as JSON."""
-
     from sqlstudio.impact_analysis import ImpactAnalyzer, ImpactResultSerializer, ImpactReportExporter
 
     files = _collect_sql_files(paths, recursive=recursive)
@@ -186,7 +173,6 @@ def analyze_impact(
         return destination
 
     payload = ImpactResultSerializer.to_json(result, indent=indent)
-
     if output:
         destination = Path(output)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -205,12 +191,7 @@ def analyze_circular_dependencies(
     recursive: bool = False,
     compact: bool = False,
 ) -> Path | None:
-    """Detect circular SQL dependencies and emit deterministic JSON."""
-
-    from sqlstudio.circular_dependencies import (
-        CircularDependencyAnalyzer,
-        CircularDependencySerializer,
-    )
+    from sqlstudio.circular_dependencies import CircularDependencyAnalyzer, CircularDependencySerializer
 
     files = _collect_sql_files(paths, recursive=recursive)
     sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
@@ -218,15 +199,37 @@ def analyze_circular_dependencies(
     indent = None if compact else 2
 
     if output:
-        destination = CircularDependencySerializer.write_json(
-            cycles,
-            output,
-            indent=indent,
-        )
+        destination = CircularDependencySerializer.write_json(cycles, output, indent=indent)
         print(destination)
         return destination
 
     print(CircularDependencySerializer.to_json(cycles, indent=indent))
+    return None
+
+
+def analyze_dead_objects(
+    paths: Iterable[str],
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+    entry_points: Iterable[str] = (),
+) -> Path | None:
+    """Identify conservative dead-object candidates and emit JSON."""
+
+    from sqlstudio.dead_objects import DeadObjectAnalyzer, DeadObjectSerializer
+
+    files = _collect_sql_files(paths, recursive=recursive)
+    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+    result = DeadObjectAnalyzer().analyze_many(sql_texts, entry_points=entry_points)
+    indent = None if compact else 2
+
+    if output:
+        destination = DeadObjectSerializer.write_json(result, output, indent=indent)
+        print(destination)
+        return destination
+
+    print(DeadObjectSerializer.to_json(result, indent=indent))
     return None
 
 
@@ -248,101 +251,46 @@ def build_parser():
     ps = sub.add_parser("parse")
     ps.add_argument("file")
 
-    dep = sub.add_parser(
-        "dependencies",
-        help="Analyze SQL object dependencies and emit a JSON graph",
-    )
+    dep = sub.add_parser("dependencies", help="Analyze SQL object dependencies and emit a JSON graph")
     dep.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
-    dep.add_argument(
-        "-o",
-        "--output",
-        help="Write JSON to this file instead of stdout",
-    )
-    dep.add_argument(
-        "-r",
-        "--recursive",
-        action="store_true",
-        help="Search supplied directories recursively",
-    )
-    dep.add_argument(
-        "--compact",
-        action="store_true",
-        help="Emit compact JSON without indentation",
-    )
+    dep.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
+    dep.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
+    dep.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
 
-    xref = sub.add_parser(
-        "cross-references",
-        help="Analyze SQL cross-references and emit JSON",
-    )
+    xref = sub.add_parser("cross-references", help="Analyze SQL cross-references and emit JSON")
     xref.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
-    xref.add_argument(
-        "-o",
-        "--output",
-        help="Write JSON to this file instead of stdout",
-    )
-    xref.add_argument(
-        "-r",
-        "--recursive",
-        action="store_true",
-        help="Search supplied directories recursively",
-    )
-    xref.add_argument(
-        "--compact",
-        action="store_true",
-        help="Emit compact JSON without indentation",
-    )
+    xref.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
+    xref.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
+    xref.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
 
-    impact = sub.add_parser(
-        "impact",
-        help="Analyze transitive SQL dependencies from a selected object",
-    )
-    impact.add_argument(
-        "root_object",
-        help="Qualified SQL object used as the analysis root",
-    )
-    impact.add_argument(
-        "paths",
-        nargs="+",
-        help="SQL files or directories to analyze",
-    )
+    impact = sub.add_parser("impact", help="Analyze transitive change impact from a selected object")
+    impact.add_argument("root_object", help="Qualified SQL object used as the analysis root")
+    impact.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
     impact.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
-    impact.add_argument(
-        "-r",
-        "--recursive",
-        action="store_true",
-        help="Search supplied directories recursively",
-    )
+    impact.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
     impact.add_argument("--html", help="Write HTML report to this file")
-    impact.add_argument(
-        "--compact",
-        action="store_true",
-        help="Emit compact JSON without indentation",
-    )
+    impact.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
 
-    cycles = sub.add_parser(
-        "circular-dependencies",
-        help="Detect circular SQL dependency components and emit JSON",
+    cycles = sub.add_parser("circular-dependencies", help="Detect circular SQL dependency components and emit JSON")
+    cycles.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
+    cycles.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
+    cycles.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
+    cycles.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
+
+    dead = sub.add_parser(
+        "dead-objects",
+        help="Find unreferenced SQL object candidates that require human review",
     )
-    cycles.add_argument(
-        "paths",
-        nargs="+",
-        help="SQL files or directories to analyze",
-    )
-    cycles.add_argument(
-        "-o",
-        "--output",
-        help="Write JSON to this file instead of stdout",
-    )
-    cycles.add_argument(
-        "-r",
-        "--recursive",
-        action="store_true",
-        help="Search supplied directories recursively",
-    )
-    cycles.add_argument(
-        "--compact",
-        action="store_true",
-        help="Emit compact JSON without indentation",
+    dead.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
+    dead.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
+    dead.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
+    dead.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
+    dead.add_argument(
+        "--entry-point",
+        action="append",
+        default=[],
+        metavar="OBJECT",
+        help="Qualified SQL object known to be invoked externally; repeat as needed",
     )
 
     return ap
@@ -362,19 +310,9 @@ def main() -> int:
         elif args.cmd == "parse":
             parse_sql_file(args.file)
         elif args.cmd == "dependencies":
-            analyze_dependencies(
-                args.paths,
-                output=args.output,
-                recursive=args.recursive,
-                compact=args.compact,
-            )
+            analyze_dependencies(args.paths, output=args.output, recursive=args.recursive, compact=args.compact)
         elif args.cmd == "cross-references":
-            analyze_cross_references(
-                args.paths,
-                output=args.output,
-                recursive=args.recursive,
-                compact=args.compact,
-            )
+            analyze_cross_references(args.paths, output=args.output, recursive=args.recursive, compact=args.compact)
         elif args.cmd == "impact":
             analyze_impact(
                 args.paths,
@@ -385,11 +323,14 @@ def main() -> int:
                 html=args.html,
             )
         elif args.cmd == "circular-dependencies":
-            analyze_circular_dependencies(
+            analyze_circular_dependencies(args.paths, output=args.output, recursive=args.recursive, compact=args.compact)
+        elif args.cmd == "dead-objects":
+            analyze_dead_objects(
                 args.paths,
                 output=args.output,
                 recursive=args.recursive,
                 compact=args.compact,
+                entry_points=args.entry_point,
             )
         else:
             ap.print_help()

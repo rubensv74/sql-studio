@@ -1,0 +1,3 @@
+CREATE VIEW dbo.Orphan
+AS
+SELECT 2 AS Id;

@@ -87,6 +87,32 @@ class DependencyResolverTests(unittest.TestCase):
         self.assertEqual({node.name for node in graph.nodes}, {"dbo.A", "dbo.B"})
         self.assertEqual(tuple(node.name for node in graph.dependencies_of("dbo.B")), ("dbo.A",))
 
+    def test_definition_metadata_wins_when_reference_appears_first(self):
+        documents = [
+            SqlDocument(
+                sql_text="",
+                objects=[
+                    SqlObject(
+                        name="B",
+                        schema="dbo",
+                        object_type="View",
+                        references=[Reference(name="A", schema="dbo")],
+                    )
+                ],
+            ),
+            SqlDocument(
+                sql_text="",
+                objects=[SqlObject(name="A", schema="dbo", object_type="Table")],
+            ),
+        ]
+
+        graph = self.resolver.resolve(documents)
+
+        node = graph.get_node("dbo.A")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.object_type, "Table")
+        self.assertEqual(graph.edges[0].target.object_type, "Table")
+
     def test_empty_document_returns_empty_graph(self):
         graph = self.resolver.resolve(SqlDocument(sql_text=""))
 

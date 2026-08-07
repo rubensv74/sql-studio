@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.14.0 - 2026-08-08
+
+### Added
+- Conservative Dead Object Detection for locally defined root components without incoming static references.
+- SCC-aware grouping so isolated circular islands are returned as one dead-object candidate finding.
+- Repeatable `--entry-point` exclusions for known externally invoked SQL objects.
+- Automatic trigger-root exclusion for implicit database invocation.
+- Dead Object JSON schema `1.0` with explicit uncertainty and `safe_to_delete=false` contract.
+- Dynamic SQL object count and uncertainty flag.
+- `dead-objects` CLI command, regression tests, reproducible fixture and CI smoke validation.
+
+### Fixed
+- Dependency resolution now registers definitions before references so local object metadata is not left as `Unknown` when file order changes.
+- `EXEC sp_executesql ...` is now marked as dynamic SQL.
+
+### Changed
+- Public package exports, architecture, CLI documentation and roadmap include Dead Object Detection.
+- Roadmap advances to Static-analysis Rule Engine Consolidation.
+
 ## 0.13.0 - 2026-08-08
 
 ### Added
@@ -11,8 +30,8 @@
 - CI smoke validation for the new command.
 
 ### Changed
-- Roadmap now advances to Dead Object Detection.
-- Architecture and CLI documentation formalize SCCs as the unit of circular-dependency reporting.
+- Roadmap advanced to Dead Object Detection.
+- Architecture and CLI documentation formalized SCCs as the unit of circular-dependency reporting.
 
 ## 0.12.0 - 2026-08-08
 
