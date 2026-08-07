@@ -16,6 +16,9 @@ SQL files
        -> Impact Analysis Engine
        -> Circular Dependency Engine
        -> Dead Object Engine
+       -> StaticAnalysisRuleEngine
+            -> SQL001 Circular Dependency
+            -> SQL002 Dead Object Candidate
   -> JSON / HTML / CLI
 ```
 
@@ -45,7 +48,7 @@ where `source` depends on `target`.
 - `dependencies_of(name)`: outgoing targets used by `name`;
 - `dependents_of(name)`: incoming sources that depend on `name`.
 
-Changing this direction would break Cross Reference, Impact Analysis, Circular Dependency Detection and Dead Object Detection semantics.
+Changing this direction would break Cross Reference, Impact Analysis, Circular Dependency Detection, Dead Object Detection and Rule Engine semantics.
 
 ## 5. Cross Reference Engine
 
@@ -87,16 +90,56 @@ Entry-point names are matched case-insensitively and must resolve to a locally d
 
 Every finding exposes `external_usage_possible=true`. The analyzer counts parsed objects containing dynamic SQL and the serializer emits `dynamic_sql_may_hide_dependencies` when that count is non-zero. External application calls, jobs, ETL, reports and other systems are outside repository-only static evidence.
 
-JSON schema `1.0` therefore declares `classification="candidate_only"` and `safe_to_delete=false`.
+Dead Object JSON schema `1.0` therefore declares `classification="candidate_only"` and `safe_to_delete=false`.
 
-## 9. CLI boundary
+## 9. Static-analysis Rule Engine
 
-`cli/sqlstudio.py` resolves SQL inputs, invokes package analyzers, writes output and maps handled validation/filesystem errors to exit code `1`. Business semantics stay in `src/sqlstudio`.
+The Rule Engine consolidates **actionable findings**, not every SQL Studio service.
 
-## 10. Validation boundary
+Dependency, Cross Reference and Impact remain structural analysis services. Circular Dependency and Dead Object engines remain valid dedicated APIs and are adapted into built-in rules.
 
-The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite and exercises CLI smoke paths against reproducible fixtures, including a real cycle and a dead-object candidate with an explicit entry point.
+### Shared context
 
-## 11. Deferred architecture
+`StaticAnalysisAnalyzer` parses all source inputs once and resolves one `DependencyGraph`. It creates a `RuleContext` containing:
 
-Static-analysis rule consolidation, packaging/installation, automated profiling and benchmarking remain separate roadmap items.
+- parsed `SqlDocument` instances;
+- canonical dependency graph;
+- declared external entry points;
+- shared parser-derived metadata such as dynamic-SQL object count.
+
+All selected rules execute against this context. Rules must not reparse inputs or create alternate graph semantics.
+
+### Common rule contract
+
+Every `StaticAnalysisRule` exposes a stable ID, title, description, default severity and `evaluate(context)` operation. The normalized output layers are:
+
+```text
+StaticAnalysisRule
+  -> RuleResult
+       -> Finding
+            -> Severity (info | warning | error)
+  -> StaticAnalysisResult
+```
+
+Built-in IDs are:
+
+- `SQL001`: Circular dependency (`error`);
+- `SQL002`: Dead object candidate (`warning`).
+
+Rule IDs are case-insensitive at input boundaries and canonicalized to uppercase. Duplicate IDs are rejected.
+
+### Compatibility boundary
+
+The Rule Engine is additive. Dedicated `circular-dependencies` and `dead-objects` contracts remain supported. The consolidated `analyze` command is the preferred path when one normalized report or severity gate is required.
+
+## 10. CLI boundary
+
+`cli/sqlstudio.py` resolves SQL inputs, invokes package analyzers, writes output and maps handled validation/filesystem errors to exit code `1`. `analyze --fail-on` uses exit code `2` only when analysis succeeds but findings meet the configured severity threshold. Business semantics stay in `src/sqlstudio`.
+
+## 11. Validation boundary
+
+The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite and exercises CLI smoke paths against reproducible fixtures, including dedicated analyzers, consolidated rules and severity-gate behavior.
+
+## 12. Deferred architecture
+
+Packaging/installation, automated profiling and benchmarking remain separate roadmap items.

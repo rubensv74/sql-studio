@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.15.0 - 2026-08-08
+
+### Added
+- Consolidated `StaticAnalysisRuleEngine` with a shared `RuleContext`, normalized `Finding`/`RuleResult` models and stable severity levels (`info`, `warning`, `error`).
+- `StaticAnalysisAnalyzer` that parses each SQL input once and builds one dependency graph for all selected rules.
+- Built-in `SQL001` Circular Dependency rule with default severity `error`.
+- Built-in `SQL002` Dead Object Candidate rule with default severity `warning` while preserving the candidate-only safety contract.
+- Deterministic consolidated JSON schema `1.0` with rule, finding, severity and shared graph/parser summaries.
+- New `analyze` CLI command with repeatable `--rule` and `--entry-point` options.
+- Optional `--fail-on info|warning|error` quality gate using exit code `2` while retaining JSON diagnostics.
+- Rule-engine API, analyzer, serialization and CLI regression coverage plus CI smoke gates.
+
+### Changed
+- Public package exports now expose Rule Engine models, built-in rules, analyzer, engine and serializer.
+- Architecture explicitly distinguishes structural analysis services from actionable static-analysis rules.
+- Existing Circular Dependency and Dead Object APIs/CLI contracts remain supported as compatibility surfaces.
+- Roadmap advances to Packaging and installable CLI.
+
 ## 0.14.0 - 2026-08-08
 
 ### Added

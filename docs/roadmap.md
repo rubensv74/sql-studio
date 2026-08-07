@@ -10,21 +10,23 @@
 - HTML Impact Report
 - Circular Dependency Detection
 - Dead Object Detection — conservative candidate classification
+- Static-analysis Rule Engine — shared context, normalized findings and severity gates
 - Python 3.12 CI baseline
 - Repository hygiene and documentation alignment
 
 ## Next
 
-1. Static-analysis Rule Engine Consolidation
-2. Packaging and installable CLI
-3. Reassess profiler and benchmark scope against MVP goals
+1. Packaging and installable CLI
+2. Reassess profiler and benchmark scope against MVP goals
 
-## Graph-analysis gates
+## Static-analysis gates
 
-All graph analyzers reuse the canonical `source -> target` direction.
+All graph analyzers and rules reuse the canonical `source -> target` direction.
 
-Circular Dependency Detection uses one strongly connected component as one circularity finding.
+Circular Dependency Detection uses one strongly connected component as one circularity finding. Rule `SQL001` adapts this contract with severity `error`.
 
-Dead Object Detection treats a component with no incoming static references from outside the component as a **candidate only**. Known external entry points can be declared explicitly; trigger roots are excluded; external callers and unresolved dynamic SQL prevent any claim that a candidate is safe to delete.
+Dead Object Detection treats a component with no incoming static references from outside the component as a **candidate only**. Rule `SQL002` adapts this contract with severity `warning`; it preserves entry-point, trigger and external-usage safeguards.
+
+The Rule Engine parses inputs once, resolves one dependency graph and shares that context across selected rules. New actionable checks should use stable rule IDs and the normalized Finding/Severity contract instead of adding isolated reporting models by default.
 
 No roadmap item is complete without automated CI evidence and aligned documentation/versioning.
