@@ -2,10 +2,7 @@
 
 ## 1. Architectural goal
 
-SQL Studio performs static analysis over SQL source files without requiring a
-live database connection. The production implementation lives under
-`src/sqlstudio/`; CLI code orchestrates those APIs but does not redefine their
-semantics.
+SQL Studio performs static analysis over SQL source files without requiring a live database connection. Production implementation lives under `src/sqlstudio/`; the CLI orchestrates package APIs but does not redefine their semantics.
 
 ## 2. Main flow
 
@@ -18,25 +15,22 @@ SQL files
        -> CrossReference Engine
        -> Impact Analysis Engine
        -> Circular Dependency Engine
+       -> Dead Object Engine
   -> JSON / HTML / CLI
 ```
 
-## 3. Repository and parser layer
+## 3. Parser and definition metadata
 
-### Repository Engine
+The parser extracts supported schema objects, references and execution metadata. `DependencyResolver` resolves documents in two passes:
 
-`RepositoryEngine` and the scanner model the repository and identify SQL source
-files.
+1. register every locally defined object and its real `object_type`;
+2. resolve references and dependency edges.
 
-### SQL Parser
+This guarantees that a local definition does not remain `Unknown` merely because another input file referenced it first. Reference-only external nodes remain `Unknown`.
 
-`src/sqlstudio/parser/` contains the tokenizer, token stream, parsing context,
-AST structures and statement parsers. The parser extracts SQL objects and the
-references needed by higher-level analyzers.
+Dynamic execution through `EXEC(...)` or `sp_executesql` is flagged on the parsed SQL object so higher-level analyses can surface uncertainty.
 
 ## 4. Dependency Engine
-
-`DependencyResolver` converts parsed references into a directed graph.
 
 The canonical edge direction is:
 
@@ -46,115 +40,63 @@ source -> target
 
 where `source` depends on `target`.
 
-`DependencyGraph` therefore exposes two intentionally different navigations:
+`DependencyGraph` exposes:
 
 - `dependencies_of(name)`: outgoing targets used by `name`;
 - `dependents_of(name)`: incoming sources that depend on `name`.
 
-Changing this direction would break Cross Reference, Impact Analysis and
-Circular Dependency Detection semantics and requires an explicit architecture
-decision.
+Changing this direction would break Cross Reference, Impact Analysis, Circular Dependency Detection and Dead Object Detection semantics.
 
 ## 5. Cross Reference Engine
 
-The Cross Reference Engine exposes direct relationship inspection over the
-dependency graph.
-
-Main components:
-
-- `CrossReference`
-- `CrossReferenceEngine`
-- `CrossReferenceAnalyzer`
-- `CrossReferenceSerializer`
-
-Primary operations include incoming and outgoing references plus JSON
-serialization.
+Cross Reference exposes direct incoming/outgoing relationships and deterministic JSON serialization.
 
 ## 6. Impact Analysis Engine
 
-Impact Analysis answers:
-
-> Which SQL objects can be affected if the selected object changes?
-
-Because graph edges point from dependent to dependency, the engine starts at the
-root object and traverses `dependents_of()` transitively.
-
-The result contains:
-
-- `root_object`;
-- a deterministic flat `impacted_objects` collection;
-- an in-memory hierarchical `ImpactNode` tree.
-
-Cycles are handled by ancestry tracking so the traversal terminates without
-duplicating objects indefinitely.
-
-### Direct and indirect impact
-
-- direct impacts are the first-level children of the root in the impact tree;
-- indirect impacts are descendants at depth two or greater.
-
-The HTML report derives its classification from that tree.
-
-### JSON compatibility
-
-`ImpactResultSerializer` schema `1.0` remains intentionally flat and does not
-serialize the tree. A future JSON tree contract must use a new schema version.
+Impact Analysis answers which SQL objects can be affected if a selected object changes. Because graph edges point from dependent to dependency, it traverses `dependents_of()` transitively. Direct and indirect HTML impact is derived from the in-memory impact tree. Impact JSON schema `1.0` remains deliberately flat.
 
 ## 7. Circular Dependency Engine
 
-Circular Dependency Detection answers:
+Circular Dependency Detection computes strongly connected components with Tarjan's algorithm. A finding is returned for a component of two or more mutually reachable objects or a one-object self-reference. One SCC is the stable reporting unit; SQL Studio does not enumerate every possible cyclic path.
 
-> Which groups of SQL objects form closed dependency loops?
+## 8. Dead Object Engine
 
-`CircularDependencyEngine` operates directly on the canonical
-`DependencyGraph`. It computes strongly connected components using Tarjan's
-algorithm.
+Dead Object Detection answers a narrower and deliberately conservative question:
 
-A finding is returned when:
+> Which locally defined SQL object components have no incoming static references from outside the component?
 
-- a strongly connected component contains two or more objects; or
-- a single-object component contains a self-referencing edge.
+The result is a **candidate review list**, not deletion proof.
 
-A finding contains the deterministically sorted member names and every internal
-dependency edge between those members. SQL object identity is compared
-case-insensitively while the graph's canonical casing is preserved in output.
+### Supported definitions
 
-### Why SCCs instead of enumerated paths
+Only schema objects recognized as `Stored Procedure`, `View`, `Function`, `Table` or `Trigger` participate. `Unknown` reference-only nodes and synthetic `Script` objects are not candidates.
 
-One strongly connected component can contain many possible cyclic paths.
-Enumerating every path can grow exponentially and produces duplicate
-representations of the same architectural problem. SQL Studio therefore uses
-one SCC as the stable unit of circular-dependency reporting.
+### Component semantics
 
-Main components:
+Circular components are reused from the SCC engine. If `A` and `B` only reference each other and nothing outside the component references either object, they are returned as one candidate finding rather than disappearing because each has an internal incoming edge.
 
-- `CircularDependency`
-- `CircularDependencyEngine`
-- `CircularDependencyAnalyzer`
-- `CircularDependencySerializer`
+### Entry-point exclusions
 
-JSON schema `1.0` includes a summary plus the members, self-reference flag and
-internal edges of each circular component.
+- callers may declare known external entry points explicitly;
+- a root component containing a declared entry point is excluded;
+- `Trigger` is an implicit entry-object type and root components containing a trigger are excluded automatically.
 
-## 8. CLI boundary
+Entry-point names are matched case-insensitively and must resolve to a locally defined supported object.
 
-`cli/sqlstudio.py` is a repository-local adapter. It is responsible for:
+### Uncertainty contract
 
-- resolving input SQL files;
-- invoking package analyzers;
-- formatting/writing output;
-- returning stable exit codes.
+Every finding exposes `external_usage_possible=true`. The analyzer counts parsed objects containing dynamic SQL and the serializer emits `dynamic_sql_may_hide_dependencies` when that count is non-zero. External application calls, jobs, ETL, reports and other systems are outside repository-only static evidence.
 
-Business semantics belong in `src/sqlstudio`, not in CLI conditionals.
+JSON schema `1.0` therefore declares `classification="candidate_only"` and `safe_to_delete=false`.
 
-## 9. Validation boundary
+## 9. CLI boundary
 
-The baseline targets Python 3.12+. GitHub Actions compiles the code, validates
-imports, runs the complete unit-test suite and exercises CLI smoke paths,
-including `circular-dependencies`.
+`cli/sqlstudio.py` resolves SQL inputs, invokes package analyzers, writes output and maps handled validation/filesystem errors to exit code `1`. Business semantics stay in `src/sqlstudio`.
 
-## 10. Deferred architecture
+## 10. Validation boundary
 
-Packaging/installation, automated profiling, benchmarking and higher-level rule
-engines remain outside the stabilized MVP baseline until explicitly promoted by
-the roadmap.
+The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite and exercises CLI smoke paths against reproducible fixtures, including a real cycle and a dead-object candidate with an explicit entry point.
+
+## 11. Deferred architecture
+
+Static-analysis rule consolidation, packaging/installation, automated profiling and benchmarking remain separate roadmap items.

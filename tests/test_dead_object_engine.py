@@ -46,6 +46,15 @@ class DeadObjectEngineTests(unittest.TestCase):
         self.assertEqual(self._member_names(result), [("dbo.Entry",)])
         self.assertEqual(result.defined_object_count, 1)
 
+    def test_script_nodes_are_not_schema_object_candidates(self):
+        graph = DependencyGraph()
+        graph.add_node(DependencyNode("UnnamedScript", "Script"))
+
+        result = self.engine.detect(graph)
+
+        self.assertEqual(result.findings, ())
+        self.assertEqual(result.defined_object_count, 0)
+
     def test_self_reference_is_a_single_circular_candidate(self):
         graph = DependencyGraph()
         node = DependencyNode("dbo.RecursiveView", "View")

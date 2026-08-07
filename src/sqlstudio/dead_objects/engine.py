@@ -22,6 +22,9 @@ class DeadObjectEngine:
     explicitly a review candidate.
     """
 
+    SUPPORTED_OBJECT_TYPES = frozenset(
+        {"stored procedure", "view", "function", "trigger", "table"}
+    )
     IMPLICIT_ENTRY_OBJECT_TYPES = frozenset({"trigger"})
 
     def __init__(
@@ -37,9 +40,9 @@ class DeadObjectEngine:
             raise ValueError("SQL object name cannot be empty")
         return normalized.casefold()
 
-    @staticmethod
-    def _is_defined(object_type: str) -> bool:
-        return object_type.strip().casefold() != "unknown"
+    @classmethod
+    def _is_supported_definition(cls, object_type: str) -> bool:
+        return object_type.strip().casefold() in cls.SUPPORTED_OBJECT_TYPES
 
     def detect(
         self,
@@ -52,7 +55,7 @@ class DeadObjectEngine:
         defined_by_key = {
             self._key(node.name): node
             for node in graph.nodes
-            if self._is_defined(node.object_type)
+            if self._is_supported_definition(node.object_type)
         }
 
         declared_entry_keys: set[str] = set()

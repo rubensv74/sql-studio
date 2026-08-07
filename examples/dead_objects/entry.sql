@@ -1,0 +1,5 @@
+CREATE PROCEDURE dbo.Entry
+AS
+BEGIN
+    SELECT * FROM dbo.Helper;
+END;

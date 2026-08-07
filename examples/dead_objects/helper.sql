@@ -1,0 +1,3 @@
+CREATE VIEW dbo.Helper
+AS
+SELECT 1 AS Id;

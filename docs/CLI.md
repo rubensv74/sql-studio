@@ -1,263 +1,138 @@
 # SQL Studio CLI
 
-The repository-local CLI is `cli/sqlstudio.py`.
+The repository-local CLI is `cli/sqlstudio.py` and targets Python 3.12+.
 
-## Requirements
-
-- Python 3.12 or later.
-- Run commands from the repository root.
-- No installation step is currently required.
-- SQL files are read as UTF-8; undecodable characters are ignored.
-
-## General usage
-
-```bash
-python cli/sqlstudio.py --help
-python cli/sqlstudio.py <command> --help
-```
-
-Available commands:
+## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `new-sprint` | Create a sprint folder and starter README. |
 | `new-handoff` | Create a handoff Markdown file. |
 | `scan` | Scan a repository and emit its model as JSON. |
-| `parse` | Parse one SQL file and emit detected SQL structures as JSON. |
+| `parse` | Parse one SQL file. |
 | `dependencies` | Build the directed SQL dependency graph. |
 | `cross-references` | Export direct cross references. |
-| `impact` | Find objects that depend on a selected object, transitively. |
-| `circular-dependencies` | Detect strongly connected dependency components and self-references. |
-
-## Dependency direction
-
-The CLI uses the same contract as the package:
-
-```text
-source -> target
-```
-
-means `source` depends on `target`.
-
-Consequently, `dependencies` describes the graph itself, `impact ROOT` walks
-incoming dependents, and `circular-dependencies` analyzes closed loops in the
-canonical directed graph.
-
-## `new-sprint`
-
-```bash
-python cli/sqlstudio.py new-sprint baseline-example
-```
-
-Creates `sprints/<name>/README.md`.
-
-## `new-handoff`
-
-```bash
-python cli/sqlstudio.py new-handoff baseline-example
-```
-
-Creates `handoffs/<name>.md`.
-
-## `scan`
-
-```bash
-python cli/sqlstudio.py scan .
-python cli/sqlstudio.py scan path/to/repository > reports/repository.json
-```
-
-## `parse`
-
-```bash
-python cli/sqlstudio.py parse examples/sample_procedure.sql
-```
-
-The command prints parser output as JSON, including detected objects,
-parameters, variables, references, temporary tables and dynamic SQL fragments.
+| `impact` | Find objects that depend on a changed object, transitively. |
+| `circular-dependencies` | Detect strongly connected dependency components. |
+| `dead-objects` | Find conservative unreferenced-object candidates for review. |
 
 ## Shared SQL input rules
 
-`dependencies`, `cross-references`, `impact` and `circular-dependencies` accept
-one or more SQL files or directories.
+Analysis commands accept one or more `.sql` files or directories. Directories are non-recursive unless `-r/--recursive` is supplied. Inputs are deduplicated and processed in deterministic path order. Missing inputs, non-SQL files and directories with no SQL files are handled errors.
 
-- Directories are non-recursive by default.
-- Use `-r` / `--recursive` for nested directories.
-- Duplicate files are removed by resolved path.
-- Inputs are processed in deterministic path order.
-- A non-`.sql` file is rejected.
-- Missing inputs or directories without SQL files return a handled error.
+## Dependency direction
 
-## `dependencies`
+`source -> target` means `source` depends on `target`. Impact walks incoming dependents; cycle detection analyzes SCCs; dead-object analysis finds supported root components without incoming static references from outside the component.
+
+## `dead-objects`
 
 ```text
-usage: sqlstudio dependencies [-h] [-o OUTPUT] [-r] [--compact]
+usage: sqlstudio dead-objects [-h] [-o OUTPUT] [-r] [--compact]
+                              [--entry-point OBJECT]
                               paths [paths ...]
 ```
 
 Examples:
 
 ```bash
-python cli/sqlstudio.py dependencies examples/sample_procedure.sql
-python cli/sqlstudio.py dependencies sql/ --recursive
-python cli/sqlstudio.py dependencies sql/ --recursive --output reports/dependencies.json
-python cli/sqlstudio.py dependencies sql/ --recursive --compact
+python cli/sqlstudio.py dead-objects sql/ --recursive
+python cli/sqlstudio.py dead-objects sql/ --recursive --entry-point dbo.ApiEntry
+python cli/sqlstudio.py dead-objects sql/ --recursive \
+  --entry-point dbo.ApiEntry \
+  --entry-point reporting.Refresh \
+  --output reports/dead-object-candidates.json
 ```
 
-The JSON schema contains stable node and edge collections. An edge such as:
+`--entry-point` is repeatable. It declares a locally defined SQL object that is known to be invoked from outside the analyzed SQL dependency graph. Unknown entry-point names are rejected rather than silently ignored.
 
-```json
-{
-  "source": "reporting.ActiveOrders",
-  "target": "sales.Orders",
-  "kind": "references"
-}
-```
+### Candidate semantics
 
-means `reporting.ActiveOrders` depends on `sales.Orders`.
+A finding is a locally defined component with no incoming static references from another component. Circular islands are grouped into one finding using the Circular Dependency SCC contract.
 
-## `cross-references`
+Supported object types are:
 
-```text
-usage: sqlstudio cross-references [-h] [-o OUTPUT] [-r] [--compact]
-                                  paths [paths ...]
-```
+- Stored Procedure
+- View
+- Function
+- Table
+- Trigger
 
-Examples:
+Triggers are excluded automatically when they form a root component because their invocation is implicit. `Unknown` nodes and synthetic `Script` nodes are never dead-object candidates.
 
-```bash
-python cli/sqlstudio.py cross-references examples/sample_procedure.sql
-python cli/sqlstudio.py cross-references sql/ --recursive
-python cli/sqlstudio.py cross-references sql/ --recursive --output reports/cross-references.json
-```
+### JSON schema `1.0`
 
-The report distinguishes standard reads/references from procedure executions
-according to the dependency kind produced by the parser and resolver.
-
-## `impact`
-
-```text
-usage: sqlstudio impact [-h] [-o OUTPUT] [-r] [--html HTML] [--compact]
-                        root_object paths [paths ...]
-```
-
-`root_object` is the SQL object assumed to be changed.
-
-Examples:
-
-```bash
-python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql
-python cli/sqlstudio.py impact sales.Orders sql/ --recursive --output reports/orders-impact.json
-python cli/sqlstudio.py impact sales.Orders sql/ --recursive --html reports/orders-impact.html
-```
-
-### JSON output
-
-Impact JSON schema `1.0` is deliberately flat:
+Representative output:
 
 ```json
 {
   "schema_version": "1.0",
-  "root_object": "sales.Orders",
-  "impacted_objects": [
-    "dbo.ActiveOrders",
-    "sales.Orders"
-  ]
-}
-```
-
-The root is always present in `impacted_objects`. The serializer sorts the flat
-collection for stable machine-readable output.
-
-The hierarchical tree is currently an in-memory/HTML concern and is not part of
-schema `1.0`. Adding it to JSON requires a new schema version.
-
-### HTML output
-
-`--html FILE` writes a self-contained report containing the root object, total
-impact, direct impacts, indirect impacts and a navigable impact tree.
-
-## `circular-dependencies`
-
-```text
-usage: sqlstudio circular-dependencies [-h] [-o OUTPUT] [-r] [--compact]
-                                       paths [paths ...]
-```
-
-Examples:
-
-```bash
-python cli/sqlstudio.py circular-dependencies sql/ --recursive
-python cli/sqlstudio.py circular-dependencies sql/ --recursive --output reports/cycles.json
-python cli/sqlstudio.py circular-dependencies a.sql b.sql --compact
-```
-
-The command reports one finding per strongly connected component (SCC), rather
-than enumerating every possible cyclic path. A one-object SCC is reported only
-when the object has a self-reference.
-
-Representative schema `1.0`:
-
-```json
-{
-  "schema_version": "1.0",
+  "classification": "candidate_only",
   "summary": {
-    "cycle_count": 1,
-    "object_count": 2
+    "defined_object_count": 3,
+    "candidate_finding_count": 1,
+    "candidate_object_count": 1,
+    "excluded_object_count": 1,
+    "declared_entry_point_count": 1,
+    "dynamic_sql_object_count": 0
   },
-  "circular_dependencies": [
+  "limitations": {
+    "external_usage_may_exist": true,
+    "dynamic_sql_may_hide_dependencies": false,
+    "safe_to_delete": false
+  },
+  "entry_points": ["dbo.Entry"],
+  "dead_object_candidates": [
     {
-      "members": ["dbo.A", "dbo.B"],
-      "is_self_reference": false,
-      "edges": [
-        {"source": "dbo.A", "target": "dbo.B", "kind": "references"},
-        {"source": "dbo.B", "target": "dbo.A", "kind": "references"}
-      ]
+      "members": [
+        {"name": "dbo.Orphan", "object_type": "View"}
+      ],
+      "is_circular_component": false,
+      "reason": "no_incoming_static_references_from_outside_component",
+      "external_usage_possible": true
+    }
+  ],
+  "excluded_objects": [
+    {
+      "name": "dbo.Entry",
+      "object_type": "Stored Procedure",
+      "reason": "component_contains_declared_entry_point"
     }
   ]
 }
 ```
 
-The ordering of findings, members and internal edges is deterministic. Object
-identity is case-insensitive while output preserves the canonical name already
-stored in the dependency graph.
+The output is intentionally not a deletion recommendation. Application code, jobs, ETL, reporting tools, cross-database callers and unresolved dynamic SQL can use objects without producing an incoming edge in the analyzed repository.
 
-## Output options
+## Other analysis commands
 
-For JSON-producing analysis commands:
+```bash
+python cli/sqlstudio.py dependencies sql/ --recursive
+python cli/sqlstudio.py cross-references sql/ --recursive
+python cli/sqlstudio.py impact sales.Orders sql/ --recursive
+python cli/sqlstudio.py circular-dependencies sql/ --recursive
+```
 
-| Option | Meaning |
-| --- | --- |
-| `-o`, `--output FILE` | Write JSON to a file instead of stdout. |
-| `-r`, `--recursive` | Search supplied directories recursively. |
-| `--compact` | Emit JSON without indentation. |
-
-`impact` additionally supports `--html FILE` for a self-contained HTML report.
-Parent directories are created for report destinations.
+JSON analysis commands support `-o/--output`, `-r/--recursive` and `--compact`. `impact` additionally supports `--html FILE`.
 
 ## Exit codes
 
-- `0`: success, including a valid analysis that finds no circular dependencies.
-- `1`: handled input, validation, permission or file-system error.
-
-Handled errors are written to stderr.
+- `0`: successful analysis, including zero findings.
+- `1`: handled input, validation, permission or filesystem error.
 
 ## Validation
-
-Run the complete suite:
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Circular Dependency Detection can be targeted with:
+Target Dead Object Detection with:
 
 ```bash
 PYTHONPATH=src python -m unittest \
-  tests/test_circular_dependency_engine.py \
-  tests/test_circular_dependency_analyzer.py \
-  tests/test_circular_dependency_serialization.py \
-  tests/test_cli_circular_dependencies.py
+  tests/test_dead_object_engine.py \
+  tests/test_dead_object_analyzer.py \
+  tests/test_dead_object_serialization.py \
+  tests/test_cli_dead_objects.py
 ```
 
-The GitHub Actions workflow runs the full suite on Python 3.12 and also performs
-compile, import and CLI smoke checks.
+GitHub Actions also runs compile, import and CLI smoke gates on Python 3.12.
