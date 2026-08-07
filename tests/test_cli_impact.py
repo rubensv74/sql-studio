@@ -68,20 +68,23 @@ class ImpactCliTests(unittest.TestCase):
     def test_analyze_impact_html_classifies_direct_dependents(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            sql_file = root / "objects.sql"
+            view_file = root / "active_orders.sql"
+            procedure_file = root / "use_active_orders.sql"
             output = root / "reports" / "impact.html"
-            sql_file.write_text(
-                (
-                    "CREATE VIEW dbo.ActiveOrders AS SELECT * FROM sales.Orders;\n"
-                    "CREATE PROCEDURE dbo.UseActiveOrders AS "
-                    "SELECT * FROM dbo.ActiveOrders;"
-                ),
+
+            view_file.write_text(
+                "CREATE VIEW dbo.ActiveOrders AS SELECT * FROM sales.Orders;",
+                encoding="utf-8",
+            )
+            procedure_file.write_text(
+                "CREATE PROCEDURE dbo.UseActiveOrders AS "
+                "SELECT * FROM dbo.ActiveOrders;",
                 encoding="utf-8",
             )
 
             with redirect_stdout(StringIO()):
                 result = CLI.analyze_impact(
-                    [str(sql_file)],
+                    [str(view_file), str(procedure_file)],
                     "sales.Orders",
                     html=str(output),
                 )
@@ -89,6 +92,7 @@ class ImpactCliTests(unittest.TestCase):
             html = output.read_text(encoding="utf-8")
             self.assertEqual(output, result)
             self.assertIn("Impactos directos", html)
+            self.assertIn("Impactos indirectos", html)
             self.assertIn("dbo.ActiveOrders", html)
             self.assertIn("dbo.UseActiveOrders", html)
 
