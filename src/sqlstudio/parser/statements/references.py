@@ -61,6 +61,8 @@ class ReferenceStatementParser(StatementParser):
 
         # UPDATE frequently targets an alias declared later in a FROM clause.
         # Resolve aliases only after the first pass has seen every FROM/JOIN.
+        # MERGE action clauses use ``UPDATE SET`` without a separate target;
+        # SET is therefore a boundary, not an object name.
         for index, token in enumerate(statement_tokens):
             if token.kind != "identifier" or token.value.upper() != "UPDATE":
                 continue
@@ -68,6 +70,8 @@ class ReferenceStatementParser(StatementParser):
             if target_index is None:
                 continue
             target = statement_tokens[target_index]
+            if target.value.upper() == "SET":
+                continue
             alias_relation = aliases.get(normalize_identifier(target.value))
             if alias_relation is not None:
                 relations.append(alias_relation)
