@@ -32,6 +32,7 @@ jobs:
         run: |
           python -c "import sqlstudio"
           python -c "from sqlstudio.impact_analysis import ImpactAnalysisEngine, ImpactReportExporter"
+          python -c "from sqlstudio.circular_dependencies import CircularDependencyEngine, CircularDependencySerializer"
 
       - name: Run unit tests
         shell: bash
@@ -59,3 +60,5 @@ jobs:
           python -m json.tool /tmp/impact.json > /dev/null
           python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql --html /tmp/impact.html
           test -s /tmp/impact.html
+          python cli/sqlstudio.py circular-dependencies examples/sample_procedure.sql > /tmp/cycles.json
+          python -m json.tool /tmp/cycles.json > /dev/null
