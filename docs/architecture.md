@@ -22,6 +22,16 @@ SQL files
   -> JSON / HTML / CLI
 ```
 
+Distribution flow is separate from business semantics:
+
+```text
+src/sqlstudio
+  -> pyproject.toml / setuptools
+  -> sdist + wheel
+  -> installed console entry point: sqlstudio
+  -> sqlstudio.cli:main
+```
+
 ## 3. Parser and definition metadata
 
 The parser extracts supported schema objects, references and execution metadata. `DependencyResolver` resolves documents in two passes:
@@ -64,33 +74,13 @@ Circular Dependency Detection computes strongly connected components with Tarjan
 
 ## 8. Dead Object Engine
 
-Dead Object Detection answers a narrower and deliberately conservative question:
-
-> Which locally defined SQL object components have no incoming static references from outside the component?
-
-The result is a **candidate review list**, not deletion proof.
-
-### Supported definitions
+Dead Object Detection asks which locally defined SQL object components have no incoming static references from outside the component. The result is a **candidate review list**, not deletion proof.
 
 Only schema objects recognized as `Stored Procedure`, `View`, `Function`, `Table` or `Trigger` participate. `Unknown` reference-only nodes and synthetic `Script` objects are not candidates.
 
-### Component semantics
+Circular components reuse the SCC engine. Explicit external entry points suppress candidate roots, and root components containing a trigger are excluded automatically because trigger invocation is implicit.
 
-Circular components are reused from the SCC engine. If `A` and `B` only reference each other and nothing outside the component references either object, they are returned as one candidate finding rather than disappearing because each has an internal incoming edge.
-
-### Entry-point exclusions
-
-- callers may declare known external entry points explicitly;
-- a root component containing a declared entry point is excluded;
-- `Trigger` is an implicit entry-object type and root components containing a trigger are excluded automatically.
-
-Entry-point names are matched case-insensitively and must resolve to a locally defined supported object.
-
-### Uncertainty contract
-
-Every finding exposes `external_usage_possible=true`. The analyzer counts parsed objects containing dynamic SQL and the serializer emits `dynamic_sql_may_hide_dependencies` when that count is non-zero. External application calls, jobs, ETL, reports and other systems are outside repository-only static evidence.
-
-Dead Object JSON schema `1.0` therefore declares `classification="candidate_only"` and `safe_to_delete=false`.
+Every finding preserves external-usage uncertainty. Dead Object JSON schema `1.0` declares `classification="candidate_only"` and `safe_to_delete=false`.
 
 ## 9. Static-analysis Rule Engine
 
@@ -98,18 +88,7 @@ The Rule Engine consolidates **actionable findings**, not every SQL Studio servi
 
 Dependency, Cross Reference and Impact remain structural analysis services. Circular Dependency and Dead Object engines remain valid dedicated APIs and are adapted into built-in rules.
 
-### Shared context
-
-`StaticAnalysisAnalyzer` parses all source inputs once and resolves one `DependencyGraph`. It creates a `RuleContext` containing:
-
-- parsed `SqlDocument` instances;
-- canonical dependency graph;
-- declared external entry points;
-- shared parser-derived metadata such as dynamic-SQL object count.
-
-All selected rules execute against this context. Rules must not reparse inputs or create alternate graph semantics.
-
-### Common rule contract
+`StaticAnalysisAnalyzer` parses all source inputs once and resolves one `DependencyGraph`. It creates a shared `RuleContext`; rules must not reparse inputs or create alternate graph semantics.
 
 Every `StaticAnalysisRule` exposes a stable ID, title, description, default severity and `evaluate(context)` operation. The normalized output layers are:
 
@@ -121,25 +100,32 @@ StaticAnalysisRule
   -> StaticAnalysisResult
 ```
 
-Built-in IDs are:
+Built-in IDs are `SQL001` Circular Dependency (`error`) and `SQL002` Dead Object Candidate (`warning`).
 
-- `SQL001`: Circular dependency (`error`);
-- `SQL002`: Dead object candidate (`warning`).
+The Rule Engine is additive. Dedicated `circular-dependencies` and `dead-objects` contracts remain supported. The consolidated `analyze` command is preferred when one normalized report or severity gate is required.
 
-Rule IDs are case-insensitive at input boundaries and canonicalized to uppercase. Duplicate IDs are rejected.
+## 10. Packaging and CLI boundary
 
-### Compatibility boundary
+`src/sqlstudio/cli.py` is the canonical CLI implementation. Package metadata declares the installed console entry point `sqlstudio = sqlstudio.cli:main`.
 
-The Rule Engine is additive. Dedicated `circular-dependencies` and `dead-objects` contracts remain supported. The consolidated `analyze` command is the preferred path when one normalized report or severity gate is required.
+`cli/sqlstudio.py` is a compatibility wrapper for direct repository execution. It must not contain a second implementation of CLI business behavior.
 
-## 10. CLI boundary
+The canonical package version lives in `src/sqlstudio/_version.py`, is exported as `sqlstudio.__version__`, and is consumed dynamically by `pyproject.toml`. `core/version.txt` remains a compatibility mirror guarded by tests.
 
-`cli/sqlstudio.py` resolves SQL inputs, invokes package analyzers, writes output and maps handled validation/filesystem errors to exit code `1`. `analyze --fail-on` uses exit code `2` only when analysis succeeds but findings meet the configured severity threshold. Business semantics stay in `src/sqlstudio`.
+The package uses a `src/` layout and setuptools PEP 517 backend to build sdist and platform-independent wheel artifacts. Packaging does not alter analysis semantics.
+
+CLI exit codes remain:
+
+- `0`: normal success;
+- `1`: handled execution/input failure;
+- `2`: successful `analyze` execution whose findings meet the requested `--fail-on` threshold.
 
 ## 11. Validation boundary
 
-The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite and exercises CLI smoke paths against reproducible fixtures, including dedicated analyzers, consolidated rules and severity-gate behavior.
+The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite, exercises the repository wrapper, builds sdist/wheel, installs the wheel and executes `sqlstudio` from outside the checkout with `PYTHONPATH` cleared.
+
+A source-only green test suite is insufficient to validate packaging.
 
 ## 12. Deferred architecture
 
-Packaging/installation, automated profiling and benchmarking remain separate roadmap items.
+Profiler/benchmark scope and publication/release automation remain separate roadmap decisions.
