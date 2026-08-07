@@ -13,20 +13,38 @@ class DependencyResolver:
 
     def resolve(self, documents: SqlDocument | Iterable[SqlDocument]) -> DependencyGraph:
         graph = DependencyGraph()
-        document_iterable = [documents] if isinstance(documents, SqlDocument) else documents
+        document_iterable = (
+            [documents]
+            if isinstance(documents, SqlDocument)
+            else list(documents)
+        )
+
+        # Register every local definition before resolving references. This
+        # prevents an object referenced by an earlier document from remaining
+        # typed as ``Unknown`` when its definition appears later in the input.
+        for document in document_iterable:
+            self._add_definitions(graph, document)
 
         for document in document_iterable:
-            self._add_document(graph, document)
+            self._add_references(graph, document)
 
         return graph
 
-    def _add_document(self, graph: DependencyGraph, document: SqlDocument) -> None:
+    def _add_definitions(self, graph: DependencyGraph, document: SqlDocument) -> None:
+        for sql_object in document.objects:
+            graph.add_node(
+                DependencyNode(
+                    name=self._object_name(sql_object),
+                    object_type=sql_object.object_type,
+                )
+            )
+
+    def _add_references(self, graph: DependencyGraph, document: SqlDocument) -> None:
         for sql_object in document.objects:
             source = DependencyNode(
                 name=self._object_name(sql_object),
                 object_type=sql_object.object_type,
             )
-            graph.add_node(source)
 
             for reference in sql_object.references:
                 target = DependencyNode(
