@@ -104,26 +104,26 @@ def _collect_sql_files(paths: Iterable[str], recursive: bool = False) -> list[Pa
     return files
 
 
+def _read_sql_texts(paths: Iterable[str], *, recursive: bool) -> list[str]:
+    files = _collect_sql_files(paths, recursive=recursive)
+    return [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+
+
 def analyze_dependencies(
     paths: Iterable[str],
     *,
     output: str | None = None,
     recursive: bool = False,
     compact: bool = False,
-    html: str | None = None,
 ) -> Path | None:
     from sqlstudio.dependencies import DependencyAnalyzer, DependencyGraphSerializer
 
-    files = _collect_sql_files(paths, recursive=recursive)
-    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
-    graph = DependencyAnalyzer().analyze_many(sql_texts)
+    graph = DependencyAnalyzer().analyze_many(_read_sql_texts(paths, recursive=recursive))
     indent = None if compact else 2
-
     if output:
         destination = DependencyGraphSerializer.write_json(graph, output, indent=indent)
         print(destination)
         return destination
-
     print(DependencyGraphSerializer.to_json(graph, indent=indent))
     return None
 
@@ -134,20 +134,15 @@ def analyze_cross_references(
     output: str | None = None,
     recursive: bool = False,
     compact: bool = False,
-    html: str | None = None,
 ) -> Path | None:
     from sqlstudio.cross_reference import CrossReferenceAnalyzer, CrossReferenceSerializer
 
-    files = _collect_sql_files(paths, recursive=recursive)
-    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
-    references = CrossReferenceAnalyzer().analyze_many(sql_texts)
+    references = CrossReferenceAnalyzer().analyze_many(_read_sql_texts(paths, recursive=recursive))
     indent = None if compact else 2
-
     if output:
         destination = CrossReferenceSerializer.write_json(references, output, indent=indent)
         print(destination)
         return destination
-
     print(CrossReferenceSerializer.to_json(references, indent=indent))
     return None
 
@@ -161,11 +156,11 @@ def analyze_impact(
     compact: bool = False,
     html: str | None = None,
 ) -> Path | None:
-    from sqlstudio.impact_analysis import ImpactAnalyzer, ImpactResultSerializer, ImpactReportExporter
+    from sqlstudio.impact_analysis import ImpactAnalyzer, ImpactReportExporter, ImpactResultSerializer
 
-    files = _collect_sql_files(paths, recursive=recursive)
-    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
-    result = ImpactAnalyzer().analyze_many(sql_texts, root_object)
+    result = ImpactAnalyzer().analyze_many(
+        _read_sql_texts(paths, recursive=recursive), root_object
+    )
     indent = None if compact else 2
     if html:
         destination = ImpactReportExporter().export(result, html)
@@ -179,7 +174,6 @@ def analyze_impact(
         destination.write_text(payload, encoding="utf-8")
         print(destination)
         return destination
-
     print(payload)
     return None
 
@@ -193,16 +187,14 @@ def analyze_circular_dependencies(
 ) -> Path | None:
     from sqlstudio.circular_dependencies import CircularDependencyAnalyzer, CircularDependencySerializer
 
-    files = _collect_sql_files(paths, recursive=recursive)
-    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
-    cycles = CircularDependencyAnalyzer().analyze_many(sql_texts)
+    cycles = CircularDependencyAnalyzer().analyze_many(
+        _read_sql_texts(paths, recursive=recursive)
+    )
     indent = None if compact else 2
-
     if output:
         destination = CircularDependencySerializer.write_json(cycles, output, indent=indent)
         print(destination)
         return destination
-
     print(CircularDependencySerializer.to_json(cycles, indent=indent))
     return None
 
@@ -215,22 +207,46 @@ def analyze_dead_objects(
     compact: bool = False,
     entry_points: Iterable[str] = (),
 ) -> Path | None:
-    """Identify conservative dead-object candidates and emit JSON."""
-
     from sqlstudio.dead_objects import DeadObjectAnalyzer, DeadObjectSerializer
 
-    files = _collect_sql_files(paths, recursive=recursive)
-    sql_texts = [path.read_text(encoding="utf-8", errors="ignore") for path in files]
-    result = DeadObjectAnalyzer().analyze_many(sql_texts, entry_points=entry_points)
+    result = DeadObjectAnalyzer().analyze_many(
+        _read_sql_texts(paths, recursive=recursive),
+        entry_points=entry_points,
+    )
     indent = None if compact else 2
-
     if output:
         destination = DeadObjectSerializer.write_json(result, output, indent=indent)
         print(destination)
         return destination
-
     print(DeadObjectSerializer.to_json(result, indent=indent))
     return None
+
+
+def analyze_static_rules(
+    paths: Iterable[str],
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+    entry_points: Iterable[str] = (),
+    rule_ids: Iterable[str] = (),
+):
+    """Execute the consolidated static-analysis rule engine and emit JSON."""
+
+    from sqlstudio.rules import StaticAnalysisAnalyzer, StaticAnalysisSerializer
+
+    result = StaticAnalysisAnalyzer().analyze_many(
+        _read_sql_texts(paths, recursive=recursive),
+        entry_points=entry_points,
+        rule_ids=rule_ids,
+    )
+    indent = None if compact else 2
+    if output:
+        destination = StaticAnalysisSerializer.write_json(result, output, indent=indent)
+        print(destination)
+    else:
+        print(StaticAnalysisSerializer.to_json(result, indent=indent))
+    return result
 
 
 def build_parser():
@@ -293,6 +309,35 @@ def build_parser():
         help="Qualified SQL object known to be invoked externally; repeat as needed",
     )
 
+    rules = sub.add_parser(
+        "analyze",
+        help="Run consolidated static-analysis rules and emit normalized findings",
+    )
+    rules.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
+    rules.add_argument("-o", "--output", help="Write JSON to this file instead of stdout")
+    rules.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
+    rules.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
+    rules.add_argument(
+        "--entry-point",
+        action="append",
+        default=[],
+        metavar="OBJECT",
+        help="Known externally invoked SQL object used by rules such as SQL002",
+    )
+    rules.add_argument(
+        "--rule",
+        action="append",
+        default=[],
+        metavar="RULE_ID",
+        help="Run only the selected rule id; repeat as needed (default: all rules)",
+    )
+    rules.add_argument(
+        "--fail-on",
+        choices=("info", "warning", "error"),
+        metavar="SEVERITY",
+        help="Return exit code 2 when a finding at or above this severity exists",
+    )
+
     return ap
 
 
@@ -332,6 +377,17 @@ def main() -> int:
                 compact=args.compact,
                 entry_points=args.entry_point,
             )
+        elif args.cmd == "analyze":
+            result = analyze_static_rules(
+                args.paths,
+                output=args.output,
+                recursive=args.recursive,
+                compact=args.compact,
+                entry_points=args.entry_point,
+                rule_ids=args.rule,
+            )
+            if args.fail_on and result.has_at_or_above(args.fail_on):
+                return 2
         else:
             ap.print_help()
             return 0

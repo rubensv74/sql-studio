@@ -23,13 +23,28 @@ from .dependencies import (
 )
 from .parser import Parameter, Reference, SQLParser, SqlDocument, SqlObject, Token, Variable
 from .repository import RepositoryEngine
+from .rules import (
+    CircularDependencyRule,
+    DeadObjectCandidateRule,
+    Finding,
+    RuleContext,
+    RuleResult,
+    Severity,
+    StaticAnalysisAnalyzer,
+    StaticAnalysisResult,
+    StaticAnalysisRule,
+    StaticAnalysisRuleEngine,
+    StaticAnalysisSerializer,
+)
 
 __all__ = [
     "CircularDependency",
     "CircularDependencyAnalyzer",
     "CircularDependencyEngine",
+    "CircularDependencyRule",
     "CircularDependencySerializer",
     "DeadObjectAnalyzer",
+    "DeadObjectCandidateRule",
     "DeadObjectEngine",
     "DeadObjectExclusion",
     "DeadObjectFinding",
@@ -42,12 +57,21 @@ __all__ = [
     "DependencyKind",
     "DependencyNode",
     "DependencyResolver",
+    "Finding",
     "Parameter",
     "Reference",
     "RepositoryEngine",
+    "RuleContext",
+    "RuleResult",
     "SQLParser",
+    "Severity",
     "SqlDocument",
     "SqlObject",
+    "StaticAnalysisAnalyzer",
+    "StaticAnalysisResult",
+    "StaticAnalysisRule",
+    "StaticAnalysisRuleEngine",
+    "StaticAnalysisSerializer",
     "Token",
     "Variable",
 ]
