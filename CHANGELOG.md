@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.0 - 2026-08-08
+
+### Added
+- Circular Dependency Detection based on strongly connected components.
+- Self-reference detection for single-object cycles.
+- Deterministic JSON schema `1.0` with cycle/object summaries, members and internal edges.
+- Public Circular Dependency API and `circular-dependencies` CLI command.
+- Unit, analyzer, serializer and CLI regression coverage for circular dependencies.
+- CI smoke validation for the new command.
+
+### Changed
+- Roadmap now advances to Dead Object Detection.
+- Architecture and CLI documentation formalize SCCs as the unit of circular-dependency reporting.
+
 ## 0.12.0 - 2026-08-08
 
 ### Added
