@@ -17,10 +17,21 @@ class ImpactReportGenerator:
     ) -> str:
         root = result.root_object
         impacted = self._unique_without_root(result.impacted_objects, root)
-        direct = self._ordered_subset(direct_objects or (), impacted)
+        source_tree = getattr(result, "tree", None)
+        display_tree = source_tree or self._flat_tree(root, impacted)
+
+        if direct_objects is None:
+            direct_candidates = (
+                [child.name for child in source_tree.children]
+                if source_tree is not None
+                else ()
+            )
+        else:
+            direct_candidates = direct_objects
+
+        direct = self._ordered_subset(direct_candidates, impacted)
         direct_set = {item.casefold() for item in direct}
         indirect = [item for item in impacted if item.casefold() not in direct_set]
-        tree = getattr(result, "tree", None) or self._flat_tree(root, impacted)
 
         return f"""<!DOCTYPE html>
 <html lang="es">
@@ -103,7 +114,7 @@ ul {{ margin: 0; padding: 0; list-style: none; }}
 <main>
 <header>
   <h1>Informe de impacto</h1>
-  <p class="subtitle">Dependencias potencialmente afectadas por un cambio.</p>
+  <p class="subtitle">Objetos que dependen directa o indirectamente del objeto cambiado.</p>
 </header>
 <section class="root-card">
   <div class="label">Objeto raíz</div>
@@ -111,14 +122,14 @@ ul {{ margin: 0; padding: 0; list-style: none; }}
 </section>
 <section class="metrics" aria-label="Resumen de impacto">
   {self._metric("Impacto total", len(impacted))}
-  {self._metric("Dependencias directas", len(direct))}
-  {self._metric("Dependencias indirectas", len(indirect))}
+  {self._metric("Impactos directos", len(direct))}
+  {self._metric("Impactos indirectos", len(indirect))}
 </section>
 <section class="grid">
-  {self._panel("Dependencias directas", direct)}
-  {self._panel("Dependencias indirectas", indirect)}
+  {self._panel("Impactos directos", direct)}
+  {self._panel("Impactos indirectos", indirect)}
 </section>
-{self._tree_panel(tree)}
+{self._tree_panel(display_tree)}
 </main>
 {self._tree_script()}
 </body>
@@ -154,7 +165,7 @@ ul {{ margin: 0; padding: 0; list-style: none; }}
     def _tree_panel(self, tree: ImpactNode) -> str:
         return (
             '<section class="panel tree">'
-            '<h2>Árbol de dependencias</h2>'
+            '<h2>Árbol de impacto</h2>'
             f'<ul>{self._render_tree(tree, "impact-tree")}</ul>'
             '</section>'
         )

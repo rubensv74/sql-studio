@@ -8,14 +8,20 @@ from .models import ImpactNode, ImpactResult
 
 
 class ImpactAnalysisEngine:
-    """Calculate transitive dependencies and preserve their hierarchy."""
+    """Calculate objects transitively impacted by a change to a SQL object.
+
+    DependencyGraph edges use the direction ``source -> target``, meaning that
+    ``source`` depends on ``target``. Impact analysis therefore follows incoming
+    edges through ``dependents_of()`` to answer: "what can be affected if this
+    object changes?"
+    """
 
     def analyze(self, graph: DependencyGraph, root_object: str) -> ImpactResult:
-        """Return the root and every dependency reachable from it.
+        """Return the root and every object that depends on it transitively.
 
         Object-name matching is case-insensitive. The flat result preserves a
-        deterministic breadth-first order, while ``tree`` preserves the real
-        parent-child relationships exposed by ``DependencyGraph``.
+        deterministic breadth-first order, while ``tree`` preserves the
+        dependent hierarchy exposed by ``DependencyGraph``.
         """
 
         root_name = self._resolve_root_name(graph, root_object)
@@ -28,7 +34,7 @@ class ImpactAnalysisEngine:
         )
 
     def build_tree(self, graph: DependencyGraph, root_object: str) -> ImpactNode:
-        """Build a cycle-safe dependency tree rooted at ``root_object``."""
+        """Build a cycle-safe impact tree rooted at ``root_object``."""
 
         root_name = self._resolve_root_name(graph, root_object)
         return self._build_tree(graph, root_name, ancestry=frozenset())
@@ -56,7 +62,7 @@ class ImpactAnalysisEngine:
 
             seen.add(key)
             impacted.append(current)
-            queue.extend(node.name for node in graph.dependencies_of(current))
+            queue.extend(node.name for node in graph.dependents_of(current))
 
         return impacted
 
@@ -75,10 +81,10 @@ class ImpactAnalysisEngine:
         children = [
             self._build_tree(
                 graph,
-                dependency.name,
+                dependent.name,
                 ancestry=next_ancestry,
             )
-            for dependency in graph.dependencies_of(object_name)
-            if dependency.name.casefold() not in next_ancestry
+            for dependent in graph.dependents_of(object_name)
+            if dependent.name.casefold() not in next_ancestry
         ]
         return ImpactNode(name=object_name, children=children)

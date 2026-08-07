@@ -18,7 +18,7 @@ SPEC.loader.exec_module(CLI)
 
 
 class ImpactCliTests(unittest.TestCase):
-    def test_analyze_impact_prints_json_to_stdout(self) -> None:
+    def test_analyze_impact_prints_dependents_to_stdout(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             sql_file = root / "objects.sql"
@@ -29,12 +29,12 @@ class ImpactCliTests(unittest.TestCase):
             stdout = StringIO()
 
             with redirect_stdout(stdout):
-                result = CLI.analyze_impact([str(sql_file)], "dbo.ActiveOrders")
+                result = CLI.analyze_impact([str(sql_file)], "sales.Orders")
 
             payload = json.loads(stdout.getvalue())
             self.assertIsNone(result)
             self.assertEqual("1.0", payload["schema_version"])
-            self.assertEqual("dbo.ActiveOrders", payload["root_object"])
+            self.assertEqual("sales.Orders", payload["root_object"])
             self.assertEqual(
                 ["dbo.ActiveOrders", "sales.Orders"],
                 payload["impacted_objects"],
@@ -54,7 +54,7 @@ class ImpactCliTests(unittest.TestCase):
             with redirect_stdout(stdout):
                 result = CLI.analyze_impact(
                     [str(sql_file)],
-                    "dbo.RunReport",
+                    "reporting.BuildReport",
                     output=str(output),
                     compact=True,
                 )
@@ -62,8 +62,35 @@ class ImpactCliTests(unittest.TestCase):
             payload = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(output, result)
             self.assertEqual(str(output), stdout.getvalue().strip())
-            self.assertIn("reporting.BuildReport", payload["impacted_objects"])
+            self.assertIn("dbo.RunReport", payload["impacted_objects"])
             self.assertNotIn("\n  ", output.read_text(encoding="utf-8"))
+
+    def test_analyze_impact_html_classifies_direct_dependents(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sql_file = root / "objects.sql"
+            output = root / "reports" / "impact.html"
+            sql_file.write_text(
+                (
+                    "CREATE VIEW dbo.ActiveOrders AS SELECT * FROM sales.Orders;\n"
+                    "CREATE PROCEDURE dbo.UseActiveOrders AS "
+                    "SELECT * FROM dbo.ActiveOrders;"
+                ),
+                encoding="utf-8",
+            )
+
+            with redirect_stdout(StringIO()):
+                result = CLI.analyze_impact(
+                    [str(sql_file)],
+                    "sales.Orders",
+                    html=str(output),
+                )
+
+            html = output.read_text(encoding="utf-8")
+            self.assertEqual(output, result)
+            self.assertIn("Impactos directos", html)
+            self.assertIn("dbo.ActiveOrders", html)
+            self.assertIn("dbo.UseActiveOrders", html)
 
     def test_parser_exposes_impact_command(self) -> None:
         args = CLI.build_parser().parse_args(
