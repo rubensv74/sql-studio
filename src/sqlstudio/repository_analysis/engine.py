@@ -54,6 +54,10 @@ class RepositoryAnalysisEngine:
             by_id[key] = source
         return tuple(sorted(by_id.values(), key=lambda item: item.source_id.casefold()))
 
+    @staticmethod
+    def _object_name(sql_object) -> str:
+        return f"{sql_object.schema}.{sql_object.name}" if sql_object.schema else sql_object.name
+
     def analyze(
         self,
         sources: Iterable[SqlSource],
@@ -88,7 +92,7 @@ class RepositoryAnalysisEngine:
         source_records: list[RepositorySourceRecord] = []
         object_records: list[RepositoryObjectRecord] = []
         for source, document in zip(canonical_sources, documents, strict=True):
-            local_names = tuple(sql_object.qualified_name for sql_object in document.objects)
+            local_names = tuple(self._object_name(sql_object) for sql_object in document.objects)
             source_records.append(
                 RepositorySourceRecord(
                     source_id=source.source_id,
@@ -97,7 +101,7 @@ class RepositoryAnalysisEngine:
                 )
             )
             for sql_object in document.objects:
-                name = sql_object.qualified_name
+                name = self._object_name(sql_object)
                 object_records.append(
                     RepositoryObjectRecord(
                         name=name,
