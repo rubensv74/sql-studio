@@ -21,18 +21,26 @@ class ExecutionStatementParser(StatementParser):
             if keyword not in {"EXEC", "EXECUTE", "SP_EXECUTESQL"}:
                 continue
 
-            reference_name = "sp_executesql" if keyword == "SP_EXECUTESQL" else self._target_name(
-                statement_tokens,
-                index + 1,
+            reference_name = (
+                "sp_executesql"
+                if keyword == "SP_EXECUTESQL"
+                else self._target_name(statement_tokens, index + 1)
             )
-            parts = split_qualified_parts(reference_name) if reference_name is not None else []
-            is_sp_executesql_target = bool(parts) and parts[-1].casefold() == "sp_executesql"
-            context.dynamic_sql = (
-                context.dynamic_sql
-                or keyword == "SP_EXECUTESQL"
+            parts = (
+                split_qualified_parts(reference_name)
+                if reference_name is not None
+                else []
+            )
+            is_sp_executesql_target = (
+                bool(parts) and parts[-1].casefold() == "sp_executesql"
+            )
+            if (
+                keyword == "SP_EXECUTESQL"
                 or is_sp_executesql_target
                 or reference_name is None
-            )
+            ):
+                context.mark_dynamic_sql()
+
             if reference_name is not None:
                 name, schema, database = split_qualified_name(reference_name)
                 if name is not None:
