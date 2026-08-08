@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.26.0 - 2026-08-08
+
+### Added
+- Real PULSE Repository Analysis dogfooding evidence against the published `0.25.0` wheel and a fixed PULSE commit.
+- Reduced regression fixtures for multi-scope physical Script aggregation and `UPDATE` aliases bound to temporary tables.
+- Installed-wheel CI smoke coverage for both real-repository failure shapes.
+- `docs/real-repository-validation-pass-4.md` with before/after repository metrics and interpretation of remaining Unknown nodes.
+
+### Fixed
+- Source-aware parsing no longer exposes several duplicate `script:<source_id>` objects when one physical file contains multiple internal fallback Script scopes around durable definitions or `GO` batches.
+- Repository Analysis object and Script counts no longer inflate because of duplicate physical Script identities.
+- `UPDATE alias ... FROM #temp AS alias` no longer emits the alias itself as a false durable/Unknown dependency after the temporary relation is suppressed.
+- PULSE false graph node `eb` and its corresponding dependency edge are removed.
+
+### Changed
+- `parse_source()` now aggregates internal fallback Script scopes into one physical Script object while preserving all durable `SqlObject` scopes.
+- Physical Script aggregation deduplicates parameters/variables/references/temporary tables conservatively and ORs dynamic-SQL evidence.
+- Statement-local alias resolution retains non-durable alias evidence for temporary tables, table variables, CTEs and built-in rowsets so UPDATE fallback cannot invent a durable target.
+
+### Real-repository evidence
+- PULSE parsed-object records: `14 -> 12`.
+- PULSE Script records: `5 -> 3`.
+- PULSE graph nodes: `35 -> 34`.
+- PULSE dependency edges: `33 -> 32`.
+- PULSE Unknown nodes: `23 -> 22`.
+- The five existing SQL002 candidate warnings remain unchanged, showing that the fixes remove noise without changing candidate classification.
+
+### Compatibility
+- Public SQL AST fields are unchanged.
+- Repository Analysis remains JSON schema `1.0`.
+- Raw-text `parse()` retains its historical internal `UnnamedScript` scope behavior; aggregation belongs to source-aware `parse_source()`.
+- Dependency direction remains `source -> target`.
+- Dead Object findings remain candidate-only.
+- PyPI publication remains out of scope.
+
 ## 0.25.0 - 2026-08-08
 
 ### Added
