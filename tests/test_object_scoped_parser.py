@@ -78,6 +78,37 @@ class ObjectScopedParserTests(unittest.TestCase):
         self.assertIn("dbo.SourceB", proc_b_dependencies)
         self.assertNotIn("dbo.SourceA", proc_b_dependencies)
 
+    def test_inline_foreign_keys_create_edges_from_owning_tables(self) -> None:
+        sql = (FIXTURES / "foreign_key_foundations.sql").read_text(encoding="utf-8")
+        document = SQLParser().parse(sql)
+
+        export_row = object_by_name(sql, "ExportBatchRow")
+        import_batch = object_by_name(sql, "ImportBatch")
+        self.assertEqual(reference_names(export_row), {"ExportBatch"})
+        self.assertEqual(reference_names(import_batch), {"ExportBatch"})
+
+        graph = DependencyAnalyzer().analyze(sql)
+        self.assertEqual(
+            {node.name for node in graph.dependencies_of("warroom.ExportBatchRow")},
+            {"warroom.ExportBatch"},
+        )
+        self.assertEqual(
+            {node.name for node in graph.dependencies_of("warroom.ImportBatch")},
+            {"warroom.ExportBatch"},
+        )
+
+        # The final GRANT REFERENCES batch is permission syntax and must not
+        # create a dependency target named ON or duplicate the table FK edges.
+        scripts = [obj for obj in document.objects if obj.object_type == "Script"]
+        self.assertTrue(scripts)
+        self.assertNotIn("ON", reference_names(scripts[-1]))
+
+    def test_grant_references_permission_is_not_foreign_key_dependency(self) -> None:
+        document = SQLParser().parse(
+            "GRANT REFERENCES ON OBJECT::dbo.Customer TO app_role;"
+        )
+        self.assertEqual(len(document.objects), 0)
+
     def test_standalone_go_is_a_batch_boundary_but_identifier_go_is_not(self) -> None:
         sql = (
             "CREATE VIEW dbo.FirstView AS SELECT * FROM dbo.SourceOne;\n"
