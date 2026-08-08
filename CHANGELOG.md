@@ -6,6 +6,9 @@
 - Formal handoff-layout contract declaring `handoffs/` as the single canonical repository path.
 - Regression coverage proving `new-handoff` creates documents under the plural canonical directory and the singular legacy path is absent.
 - Expanded human-readable handoff template with current-state, validation, decision/risk and next-action sections.
+- Controlled GitHub Release workflow triggered only after successful `CI` completion on `main`.
+- GitHub-only release policy with immutable stable SemVer tags and wheel/sdist release assets.
+- Release-policy regression tests and an explicit `main` branch-protection target configuration.
 
 ### Removed
 - Legacy `handoff/handoff.schema.json`, an unused 44-byte stub with no properties, version, package consumer, tests or CLI integration.
@@ -13,10 +16,12 @@
 
 ### Changed
 - Roadmap and historical audit remediation status now mark handoff-directory drift as resolved.
-- Release/tag/PyPI policy becomes the next explicit roadmap decision.
+- Release/tag policy is resolved as GitHub Releases only; PyPI publication remains explicitly deferred.
+- Branch protection becomes the remaining repository-administration gate after the first controlled release.
 
 ### Compatibility
 - `sqlstudio new-handoff <name>` remains supported and continues writing `handoffs/<name>.md`.
+- No package API, CLI command or analysis schema changes are introduced by release automation.
 
 ## 0.18.0 - 2026-08-08
 
