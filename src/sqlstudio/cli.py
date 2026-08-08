@@ -262,6 +262,42 @@ def analyze_static_rules(
     return result
 
 
+def analyze_repository(
+    paths: Iterable[str],
+    *,
+    output: str | None = None,
+    recursive: bool = False,
+    compact: bool = False,
+    html: str | None = None,
+    entry_points: Iterable[str] = (),
+):
+    """Run the unified repository analysis once and emit JSON and/or HTML."""
+
+    from .repository_analysis import (
+        RepositoryAnalysisEngine,
+        RepositoryAnalysisReportExporter,
+        RepositoryAnalysisSerializer,
+    )
+
+    result = RepositoryAnalysisEngine().analyze(
+        _read_sql_sources(paths, recursive=recursive),
+        entry_points=entry_points,
+    )
+    indent = None if compact else 2
+
+    if output:
+        destination = RepositoryAnalysisSerializer.write_json(result, output, indent=indent)
+        print(destination)
+    else:
+        print(RepositoryAnalysisSerializer.to_json(result, indent=indent))
+
+    if html:
+        html_destination = RepositoryAnalysisReportExporter().export(result, html)
+        print(html_destination, file=sys.stderr if not output else sys.stdout)
+
+    return result
+
+
 def build_parser():
     import argparse
 
@@ -352,6 +388,23 @@ def build_parser():
         help="Return exit code 2 when a finding at or above this severity exists",
     )
 
+    repository_analysis = sub.add_parser(
+        "repository-analysis",
+        help="Run one unified repository analysis and emit versioned JSON plus optional HTML",
+    )
+    repository_analysis.add_argument("paths", nargs="+", help="SQL files or directories to analyze")
+    repository_analysis.add_argument("-o", "--output", help="Write repository-analysis JSON to this file")
+    repository_analysis.add_argument("-r", "--recursive", action="store_true", help="Search supplied directories recursively")
+    repository_analysis.add_argument("--html", help="Also write a self-contained HTML report to this file")
+    repository_analysis.add_argument("--compact", action="store_true", help="Emit compact JSON without indentation")
+    repository_analysis.add_argument(
+        "--entry-point",
+        action="append",
+        default=[],
+        metavar="OBJECT",
+        help="Qualified SQL object known to be invoked externally; repeat as needed",
+    )
+
     return ap
 
 
@@ -402,6 +455,15 @@ def main() -> int:
             )
             if args.fail_on and result.has_at_or_above(args.fail_on):
                 return 2
+        elif args.cmd == "repository-analysis":
+            analyze_repository(
+                args.paths,
+                output=args.output,
+                recursive=args.recursive,
+                compact=args.compact,
+                html=args.html,
+                entry_points=args.entry_point,
+            )
         else:
             ap.print_help()
             return 0
