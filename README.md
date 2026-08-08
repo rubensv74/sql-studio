@@ -2,15 +2,19 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.20.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases and evidence-driven parser hardening from real repository validation. PyPI publication remains explicitly deferred.
+**Current version:** `0.21.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, evidence-driven parser hardening and object-scoped multi-definition parsing. PyPI publication remains explicitly deferred.
 
 ## Implemented capabilities
 
 - repository scanning and JSON repository model;
 - T-SQL tokenization and parsing with representative complex-syntax regression coverage;
+- multiple durable SQL objects per `.sql` source with isolated object-scoped evidence;
 - SQL object, parameter, variable and reference extraction;
 - bracketed/multipart identifier normalization, CTE/temp suppression and multi-reference extraction;
+- standalone `GO` batch-boundary handling;
+- guarded migration DDL discovery;
+- stored-procedure parameters with or without parentheses;
 - transient `CREATE TABLE #temp` handling without durable graph pollution;
 - built-in rowset suppression for `OPENJSON`, `OPENQUERY` and `OPENROWSET`;
 - directed dependency graph;
@@ -72,11 +76,23 @@ Therefore:
 
 ## Parser boundary
 
-The parser is a dependency-oriented static parser, not a full T-SQL compiler. The representative regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets and escaped string literals.
+The parser is dependency-oriented, not a full T-SQL compiler. The representative regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition source files and escaped string literals.
 
-Dynamic SQL and runtime/external constructs remain uncertainty boundaries. The current guaranteed source-file shape remains one primary durable schema object per file. Real-repository dogfooding has confirmed that migration/foundation scripts may contain multiple independent durable `CREATE` definitions; correct support for that shape is an explicit architecture decision because references and transient state must be owned by the correct object scope rather than accumulated document-wide.
+### Object-scoped ownership
 
-See [T-SQL Parser Support Contract](docs/parser-support.md) and [Real Repository Validation — Pass 1](docs/real-repository-validation.md).
+One physical `.sql` file may define several durable schema objects. SQL Studio emits each as its own `SqlObject` and isolates:
+
+- parameters;
+- variables;
+- references/calls;
+- temporary tables;
+- dynamic-SQL evidence.
+
+The active scope closes when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends. This prevents dependency evidence from one object leaking into another object defined later in the same file.
+
+Dynamic SQL and runtime/external constructs remain uncertainty boundaries. Multi-definition support is guaranteed only when source structure provides reliable ownership boundaries; SQL Studio prefers incomplete evidence over a misleading graph.
+
+See [T-SQL Parser Support Contract](docs/parser-support.md), [Object-Scoped Parser Architecture](docs/object-scoped-parser.md) and [Real Repository Validation — Pass 1](docs/real-repository-validation.md).
 
 ## Rule Engine
 
@@ -144,7 +160,7 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 python -m build
 ```
 
-GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, representative parser fixtures, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
+GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, representative complex/parser ownership fixtures, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
 
 ## Repository layout
 
@@ -152,7 +168,7 @@ GitHub Actions validates Python 3.12, compilation, package imports, the full tes
 pyproject.toml                         Standard Python build/install metadata
 src/sqlstudio/                         Production Python package
   cli.py                               Canonical command-line implementation
-  parser/                              SQL tokenizer, parser and name normalization
+  parser/                              SQL tokenizer, parser and object-scope ownership
   dependencies/                        Canonical dependency graph and resolver
   cross_reference/                     Incoming/outgoing cross references
   impact_analysis/                     Change-impact traversal and reporting
@@ -163,6 +179,7 @@ cli/sqlstudio.py                       Repository-checkout compatibility wrapper
 handoffs/                              Canonical handoff notes/template
 tests/fixtures/tsql_complex/           Representative dependency-oriented T-SQL corpus
 tests/fixtures/real_repository/        Reduced cases derived from real-repository failures
+tests/fixtures/object_scopes/          Multi-definition ownership and batch-boundary corpus
 tests/                                 Automated tests
 docs/                                  Architecture, CLI, packaging and functional contracts
 examples/                              Reproducible SQL examples
@@ -176,6 +193,7 @@ Performance profiler/benchmark concepts are deliberately outside the current pro
 - [CLI](docs/CLI.md)
 - [Packaging and installation](docs/packaging.md)
 - [T-SQL Parser Support Contract](docs/parser-support.md)
+- [Object-Scoped Parser Architecture](docs/object-scoped-parser.md)
 - [Real Repository Validation — Pass 1](docs/real-repository-validation.md)
 - [Handoff Repository Layout](docs/handoff-layout.md)
 - [Release Policy](docs/release-policy.md)
