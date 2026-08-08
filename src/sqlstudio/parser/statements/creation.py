@@ -5,7 +5,6 @@ from typing import Sequence
 from ..ast import Parameter, SqlObject, Token
 from ..context import ParserContext
 from ..names import split_qualified_name
-from ..token_stream import TokenStream
 from .base import StatementParser
 
 
@@ -57,17 +56,16 @@ class CreateStatementParser(StatementParser):
         )
 
         if object_type in {"Stored Procedure", "Function"} and name_index is not None:
-            parameter_start = name_index + 1
-            if (
-                parameter_start < len(statement_tokens)
-                and statement_tokens[parameter_start].value == "("
-            ):
-                parameter_start += 1
+            parameter_tokens = list(statement_tokens[name_index + 1 :])
+            wrapped = bool(parameter_tokens and parameter_tokens[0].value == "(")
+            if wrapped:
+                parameter_tokens = parameter_tokens[1:]
 
             self._parse_parameter_list(
-                TokenStream(list(statement_tokens[parameter_start:])),
+                parameter_tokens,
                 context,
                 stop_keywords={"AS", "RETURNS", "WITH", "BEGIN"},
+                wrapped=wrapped,
             )
 
         return True
@@ -129,69 +127,116 @@ class CreateStatementParser(StatementParser):
 
     def _parse_parameter_list(
         self,
-        stream: TokenStream,
+        tokens: Sequence[Token],
         context: ParserContext,
         *,
         stop_keywords: set[str],
+        wrapped: bool,
     ) -> None:
-        while not stream.is_at_end():
-            token = stream.current()
-            if token is None:
-                break
-            if token.value == ")":
-                break
-            if token.kind == "identifier" and token.value.upper() in stop_keywords:
+        """Parse module parameters while respecting datatype parentheses.
+
+        Procedure parameters do not require an outer parenthesized list, while
+        functions commonly use one. Datatypes such as ``nvarchar(30)``,
+        ``decimal(18,4)`` and ``datetime2(3)`` also contain parentheses. Their
+        closing token must not be confused with the end of the parameter list.
+        """
+
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if self._is_parameter_list_end(token, depth=0, wrapped=wrapped, stop_keywords=stop_keywords):
                 break
             if token.value == ",":
-                stream.advance()
+                index += 1
+                continue
+            if token.kind != "identifier" or not token.value.startswith("@"):
+                index += 1
                 continue
 
-            if token.kind == "identifier" and token.value.startswith("@"):
-                name = token.value
-                stream.advance()
-                datatype: str | None = None
-                default_value: str | None = None
-                output = False
-                while not stream.is_at_end():
-                    current = stream.current()
-                    if current is None:
-                        break
-                    if current.value in {",", ")"}:
-                        break
-                    if (
-                        current.kind == "identifier"
-                        and current.value.upper() in stop_keywords
-                    ):
-                        break
-                    if (
-                        current.kind == "identifier"
-                        and current.value.upper() in {"OUTPUT", "OUT"}
-                    ):
-                        output = True
-                        stream.advance()
+            name = token.value
+            index += 1
+            datatype: str | None = None
+            default_value: str | None = None
+            output = False
+            depth = 0
+
+            while index < len(tokens):
+                current = tokens[index]
+
+                if current.value == "(":
+                    depth += 1
+                    index += 1
+                    continue
+
+                if current.value == ")":
+                    if depth > 0:
+                        depth -= 1
+                        index += 1
                         continue
-                    if current.value == "=":
-                        stream.advance()
-                        next_token = stream.advance()
-                        if next_token is not None:
-                            default_value = next_token.value
-                        continue
-                    if (
-                        current.kind == "identifier"
-                        and datatype is None
-                    ):
-                        datatype = current.value
-                        stream.advance()
-                        continue
-                    stream.advance()
-                context.add_parameter(
-                    Parameter(
-                        name=name,
-                        datatype=datatype,
-                        default_value=default_value,
-                        output=output,
-                    )
+                    if wrapped:
+                        break
+                    index += 1
+                    continue
+
+                if depth == 0 and current.value == ",":
+                    index += 1
+                    break
+
+                if (
+                    depth == 0
+                    and current.kind == "identifier"
+                    and current.value.upper() in stop_keywords
+                ):
+                    break
+
+                if (
+                    depth == 0
+                    and current.kind == "identifier"
+                    and current.value.upper() in {"OUTPUT", "OUT"}
+                ):
+                    output = True
+                    index += 1
+                    continue
+
+                if depth == 0 and current.value == "=":
+                    index += 1
+                    if index < len(tokens):
+                        default_value = tokens[index].value
+                        index += 1
+                    continue
+
+                if current.kind == "identifier" and datatype is None:
+                    datatype = current.value
+
+                index += 1
+
+            context.add_parameter(
+                Parameter(
+                    name=name,
+                    datatype=datatype,
+                    default_value=default_value,
+                    output=output,
                 )
-                continue
+            )
 
-            stream.advance()
+            if index < len(tokens) and self._is_parameter_list_end(
+                tokens[index],
+                depth=0,
+                wrapped=wrapped,
+                stop_keywords=stop_keywords,
+            ):
+                break
+
+    @staticmethod
+    def _is_parameter_list_end(
+        token: Token,
+        *,
+        depth: int,
+        wrapped: bool,
+        stop_keywords: set[str],
+    ) -> bool:
+        if depth != 0:
+            return False
+        if wrapped and token.value == ")":
+            return True
+        return token.kind == "identifier" and token.value.upper() in stop_keywords

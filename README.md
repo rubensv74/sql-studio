@@ -2,8 +2,8 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.22.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, evidence-driven parser hardening, object-scoped multi-definition parsing and structural foreign-key dependency evidence. PyPI publication remains explicitly deferred.
+**Current version:** `0.23.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, evidence-driven parser hardening, object-scoped multi-definition parsing, structural foreign-key dependency evidence and real SQL Server procedure-signature handling. PyPI publication remains explicitly deferred.
 
 ## Implemented capabilities
 
@@ -11,11 +11,13 @@ SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 - T-SQL tokenization and parsing with representative complex-syntax regression coverage;
 - multiple durable SQL objects per `.sql` source with isolated object-scoped evidence;
 - SQL object, parameter, variable and reference extraction;
+- real SQL Server procedure/function parameters with parameterized datatypes, defaults and `OUTPUT` markers;
+- case-insensitive separation of module parameters from local variables;
 - inline `FOREIGN KEY ... REFERENCES` dependency extraction;
 - bracketed/multipart identifier normalization, CTE/temp suppression and multi-reference extraction;
 - standalone `GO` batch-boundary handling;
 - guarded migration DDL discovery;
-- stored-procedure parameters with or without parentheses;
+- stored-procedure parameters with or without outer parentheses;
 - transient `CREATE TABLE #temp` handling without durable graph pollution;
 - built-in rowset suppression for `OPENJSON`, `OPENQUERY` and `OPENROWSET`;
 - directed dependency graph;
@@ -79,13 +81,19 @@ An inline foreign key is represented with the same structural direction. If `Chi
 
 ## Parser boundary
 
-The parser is dependency-oriented, not a full T-SQL compiler. The representative regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition source files, inline foreign keys and escaped string literals.
+The parser is dependency-oriented, not a full T-SQL compiler. The representative regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition source files, inline foreign keys, real procedure signatures and escaped string literals.
 
 ### Object-scoped ownership
 
 One physical `.sql` file may define several durable schema objects. SQL Studio emits each as its own `SqlObject` and isolates parameters, variables, references/calls, temporary tables and dynamic-SQL evidence.
 
 The active scope closes when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends. This prevents dependency evidence from one object leaking into another object defined later in the same file.
+
+### Procedure and function signatures
+
+Stored procedures may omit outer parentheses around their parameters while functions commonly use them. SQL Studio distinguishes those optional signature parentheses from datatype parentheses such as `nvarchar(320)`, `decimal(18,4)` and `datetime2(3)`. Inner datatype commas or closing parentheses therefore do not truncate the module signature.
+
+Defaults and `OUTPUT` / `OUT` markers remain attached to the correct parameter. Later assignments such as `SET @Parameter = ...` do not reclassify an existing parameter as a local variable; true `DECLARE` variables remain object-scoped variable evidence.
 
 ### DDL references
 
@@ -95,7 +103,7 @@ Standalone `ALTER TABLE ... FOREIGN KEY` ownership is not approximated as a Scri
 
 Dynamic SQL and runtime/external constructs remain uncertainty boundaries. Multi-definition support is guaranteed only when source structure provides reliable ownership boundaries; SQL Studio prefers incomplete evidence over a misleading graph.
 
-See [T-SQL Parser Support Contract](docs/parser-support.md), [Object-Scoped Parser Architecture](docs/object-scoped-parser.md), [Real Repository Validation — Pass 1](docs/real-repository-validation.md) and [Real Repository Validation — Pass 2](docs/real-repository-validation-pass-2.md).
+See [T-SQL Parser Support Contract](docs/parser-support.md), [Object-Scoped Parser Architecture](docs/object-scoped-parser.md), [Real Repository Validation — Pass 1](docs/real-repository-validation.md), [Pass 2](docs/real-repository-validation-pass-2.md) and [Pass 3](docs/real-repository-validation-pass-3.md).
 
 ## Rule Engine
 
@@ -163,7 +171,7 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 python -m build
 ```
 
-GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, representative complex/parser ownership fixtures, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
+GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, representative complex/parser ownership/procedure-signature fixtures, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
 
 ## Repository layout
 
@@ -182,7 +190,7 @@ cli/sqlstudio.py                       Repository-checkout compatibility wrapper
 handoffs/                              Canonical handoff notes/template
 tests/fixtures/tsql_complex/           Representative dependency-oriented T-SQL corpus
 tests/fixtures/real_repository/        Reduced cases derived from real-repository failures
-tests/fixtures/object_scopes/          Multi-definition ownership, batch-boundary and DDL dependency corpus
+tests/fixtures/object_scopes/          Multi-definition ownership, DDL dependency and procedure-signature corpus
 tests/                                 Automated tests
 docs/                                  Architecture, CLI, packaging and functional contracts
 examples/                              Reproducible SQL examples
@@ -199,6 +207,7 @@ Performance profiler/benchmark concepts are deliberately outside the current pro
 - [Object-Scoped Parser Architecture](docs/object-scoped-parser.md)
 - [Real Repository Validation — Pass 1](docs/real-repository-validation.md)
 - [Real Repository Validation — Pass 2](docs/real-repository-validation-pass-2.md)
+- [Real Repository Validation — Pass 3](docs/real-repository-validation-pass-3.md)
 - [Handoff Repository Layout](docs/handoff-layout.md)
 - [Release Policy](docs/release-policy.md)
 - [Main Branch Protection](docs/branch-protection.md)

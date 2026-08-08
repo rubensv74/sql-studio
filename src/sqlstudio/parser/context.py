@@ -105,10 +105,18 @@ class ParserContext:
         self.current_parameter = updated
 
     def add_variable(self, name: str) -> None:
-        if name and name not in self.seen_variables:
-            self.ensure_object()
-            self.variables.append(Variable(name=name))
-            self.seen_variables.add(name)
+        if not name:
+            return
+
+        normalized = name.casefold()
+        if any(parameter.name.casefold() == normalized for parameter in self.parameters):
+            return
+        if normalized in self.seen_variables:
+            return
+
+        self.ensure_object()
+        self.variables.append(Variable(name=name))
+        self.seen_variables.add(normalized)
 
     def add_reference(
         self,
