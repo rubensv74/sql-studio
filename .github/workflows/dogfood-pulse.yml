@@ -1,0 +1,109 @@
+name: PULSE Repository Analysis Dogfood
+
+on:
+  push:
+    branches:
+      - "agent/dogfood-pulse-report-026"
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PULSE validation corpus
+        uses: actions/checkout@v7
+        with:
+          repository: rubensv74/app_pulse
+          path: pulse
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install released SQL Studio 0.25.0
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps \
+            https://github.com/rubensv74/sql-studio/releases/download/v0.25.0/sql_studio-0.25.0-py3-none-any.whl
+          sqlstudio --version
+
+      - name: Analyze PULSE SQL repository
+        run: |
+          sqlstudio repository-analysis pulse/sql --recursive \
+            --output /tmp/pulse-repository-analysis.json \
+            --html /tmp/pulse-repository-analysis.html
+          test -s /tmp/pulse-repository-analysis.json
+          test -s /tmp/pulse-repository-analysis.html
+
+      - name: Print dogfood evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/pulse-repository-analysis.json').read_text(encoding='utf-8'))
+          summary = payload['summary']
+          print('DOGFOOD_SCHEMA_VERSION=' + payload['schema_version'])
+          for key in (
+              'source_count',
+              'parsed_object_count',
+              'durable_object_count',
+              'script_object_count',
+              'graph_node_count',
+              'dependency_edge_count',
+              'circular_component_count',
+              'dead_object_candidate_count',
+              'finding_count',
+              'error_count',
+              'warning_count',
+              'dynamic_sql_object_count',
+          ):
+              print(f'DOGFOOD_{key.upper()}={summary[key]}')
+
+          print('DOGFOOD_SOURCES')
+          for source in payload['sources']:
+              print(f"  {source['source_id']} -> {', '.join(source['objects']) or '(none)'}")
+
+          print('DOGFOOD_KEY_OBJECTS')
+          key_objects = sorted(
+              payload['objects'],
+              key=lambda item: (-item['dependent_count'], item['name'].casefold()),
+          )[:20]
+          for item in key_objects:
+              print(
+                  f"  {item['name']} [{item['object_type']}] "
+                  f"dependents={item['dependent_count']} dependencies={item['dependency_count']} "
+                  f"source={item['source_id']}"
+              )
+
+          unknown = [
+              node['name'] for node in payload['dependencies']['nodes']
+              if node['object_type'] == 'Unknown'
+          ]
+          print(f'DOGFOOD_UNKNOWN_NODE_COUNT={len(unknown)}')
+          for name in unknown[:50]:
+              print('  UNKNOWN ' + name)
+
+          print('DOGFOOD_FINDINGS')
+          for finding in payload['findings']:
+              print(
+                  f"  {finding['severity']} {finding['rule_id']} "
+                  f"objects={','.join(finding['objects'])} title={finding['title']}"
+              )
+
+          print('DOGFOOD_DYNAMIC_SQL_OBJECTS')
+          for name in payload['uncertainty']['dynamic_sql_objects']:
+              print('  ' + name)
+          PY
+
+      - name: Upload dogfood report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-repository-analysis-v0.25.0
+          path: |
+            /tmp/pulse-repository-analysis.json
+            /tmp/pulse-repository-analysis.html
+          if-no-files-found: error
