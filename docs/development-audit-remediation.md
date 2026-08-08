@@ -59,14 +59,21 @@ Los hallazgos que bloqueaban continuar el roadmap fueron remediados en `0.12.0`.
 
 **Decisión cerrada en 0.17.0.** La auditoría confirmó que los artefactos existentes eran stubs sin medición real, sin integración de paquete, tests ni CI y con schemas duplicados/incompatibles. Se retiraron del baseline y el concepto se difiere a post-MVP bajo `docs/performance-tooling-scope.md`.
 
+### Parser T-SQL representativo
+
+**Cerrado en 0.18.0.** Se incorporó un corpus reproducible y regresiones para identificadores con corchetes, referencias múltiples, CTE, derived tables, `MERGE`, alias de `UPDATE`, temporales y literales escapados. El alcance y las limitaciones quedan fijados en `docs/parser-support.md`.
+
+### Directorios handoff duplicados
+
+**Cerrado en 0.19.0.** `handoffs/` es la única ruta canónica. El CLI ya escribía en esa ruta; el singular `handoff/` solo contenía un schema stub de 44 bytes sin consumidor y fue retirado. La decisión queda documentada en `docs/handoff-layout.md`.
+
 ## 4. Deuda controlada que permanece abierta
 
-- decidir el destino de `handoff/` frente a `handoffs/`;
 - valorar protección de `main` y reglas de branch protection antes de un release formal;
-- ampliar casos reales de T-SQL complejo para endurecer el parser;
-- definir política de tags/releases y eventual publicación PyPI.
+- definir política de tags/releases y eventual publicación PyPI;
+- ampliar el corpus T-SQL únicamente cuando aparezcan patrones reales no cubiertos.
 
-Estos puntos deben resolverse como milestones explícitos y no mezclarse incidentalmente con cambios funcionales no relacionados.
+Los dos primeros puntos implican decisiones explícitas de política de release/repositorio y no deben aplicarse de forma incidental.
 
 ## 5. Gate de salida histórico
 
@@ -76,8 +83,9 @@ Los milestones posteriores han mantenido el mismo principio: una capacidad o dec
 
 ## 6. Punto de reanudación actual
 
-Con packaging y performance-scope resueltos, el siguiente trabajo técnico recomendado es:
+El baseline técnico del MVP está estabilizado. Los siguientes pasos ya no son deuda técnica silenciosa, sino decisiones de release:
 
-**Representative complex T-SQL parser hardening**
+1. definir política de tags/releases y eventual publicación PyPI;
+2. decidir branch protection de `main` antes del primer release etiquetado.
 
-Debe introducir fixtures reales/reducidos de construcciones T-SQL complejas, registrar claramente soporte y limitaciones, y añadir regresiones sin cambiar silenciosamente los contratos de objetos/referencias existentes.
+Estas decisiones deben tratarse explícitamente porque cambian el modelo operativo del repositorio y la distribución del paquete.
