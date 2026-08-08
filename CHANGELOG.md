@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.20.0 - 2026-08-08
+
+### Added
+- First documented real-repository dogfooding pass with reduced, synthetic regression fixtures derived from observed SQL shapes.
+- `tests/fixtures/real_repository/` coverage for JSON staging and temp-only utility scripts.
+- `docs/real-repository-validation.md` with evidence, corrected defects, continuing validation rules and the explicit multi-definition architecture boundary.
+
+### Fixed
+- `OPENJSON(...)` is no longer emitted as a false durable schema dependency when used after `FROM` or `JOIN`.
+- `CREATE TABLE #temp` and `CREATE TABLE ##temp` no longer register transient tables as durable `Table` objects.
+- Utility scripts whose first created relation is temporary now retain the existing `Script` fallback instead of contaminating the dependency graph with a temporary-table source object.
+
+### Changed
+- Parser support documentation now treats built-in rowset suppression as evidence-driven and includes `OPENJSON` alongside `OPENQUERY` and `OPENROWSET`.
+- Real-repository validation becomes the default source of parser-hardening work.
+- Multiple independent durable `CREATE` definitions in one source file are elevated from a generic limitation to an explicit architecture decision; no silent approximation is introduced.
+
+### Compatibility
+- Public AST models, graph direction, CLI commands and serialized analysis schemas remain unchanged.
+- Dynamic SQL remains an uncertainty boundary.
+
 ## 0.19.0 - 2026-08-08
 
 ### Added
@@ -128,7 +149,7 @@
 - Self-reference detection for single-object cycles.
 - Deterministic JSON schema `1.0` with cycle/object summaries, members and internal edges.
 - Public Circular Dependency API and `circular-dependencies` CLI command.
-- Unit, analyzer, serializer and CLI regression coverage for circular dependencies.
+- Unit, analyzer, serialization and CLI regression coverage for circular dependencies.
 - CI smoke validation for the new command.
 
 ### Changed
@@ -151,7 +172,7 @@
 ### Changed
 - Formalized `source -> target` dependency semantics in architecture documentation.
 - Confirmed Impact JSON schema `1.0` remains flat; tree serialization is deferred to a future schema version.
-- Aligned README, CLI documentation, roadmap and project version with the implemented baseline.
+- Aligned README, architecture, CLI documentation, roadmap and project version with the implemented baseline.
 - Standardized documented runtime support on Python 3.12+.
 
 ### Removed

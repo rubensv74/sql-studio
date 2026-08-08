@@ -17,21 +17,32 @@
 - Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 - GitHub-only release policy — successful `main` CI creates immutable SemVer tag + GitHub Release with wheel/sdist assets
+- First controlled GitHub Release `v0.19.0` verified with wheel and sdist assets
+- Real-repository validation pass 1 — JSON rowset and temporary-object false positives reduced into regression fixtures and corrected in `0.20.0`
 
 ## Next
 
-1. Protect `main` using the documented CI-gated branch policy
-2. Verify first controlled GitHub Release `v0.19.0`
-3. Expand the representative parser corpus when concrete repository syntax exposes a missing dependency pattern
-4. Revisit PyPI publication only through a separate explicit decision
+1. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
+2. Resolve the architecture decision for multiple independent durable `CREATE` definitions in one `.sql` source
+3. Continue real-repository dogfooding and parser hardening from concrete failures after that boundary is resolved
+4. Design the unified Repository Analysis Report only after real-repository graph fidelity is adequate
+5. Revisit PyPI publication only through a separate explicit decision
 
 ## Parser gates
 
 The parser is dependency-oriented rather than a complete T-SQL compiler. Parser changes must be driven by reduced reproducible fixtures and preserve the public AST unless a separate versioned decision is made.
 
-CTE aliases, temp tables and table variables must not become durable dependency nodes. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
+CTE aliases, temp tables and table variables must not become durable dependency nodes. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
-Current support and limitations are frozen in `docs/parser-support.md`.
+Current support and limitations are frozen in `docs/parser-support.md`. Real-repository evidence and the first discovered architecture boundary are recorded in `docs/real-repository-validation.md`.
+
+### Open architecture boundary: multi-definition source files
+
+Real-repository validation confirmed migration/foundation scripts that contain several independent durable schema-object definitions in one `.sql` file.
+
+The current parser accumulates parameters, references, transient state and dynamic-SQL evidence at document scope and then exposes one primary durable source object. Correct multi-definition support therefore requires an explicit object-scope/reference-ownership model; it must not be approximated by simply returning every encountered `CREATE` token.
+
+No implementation of that model begins without a deliberate architecture decision.
 
 ## Repository hygiene gate
 

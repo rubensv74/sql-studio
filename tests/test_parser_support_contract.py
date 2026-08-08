@@ -13,12 +13,19 @@ class ParserSupportContractTests(unittest.TestCase):
         self.assertIn("Supported reference patterns", text)
         self.assertIn("Known limitations", text)
         self.assertIn("source -> target", text)
-        self.assertIn("one primary schema object", text)
+        self.assertIn("one primary durable schema object", text)
+        self.assertIn("OPENJSON", text)
+        self.assertIn("multiple independent durable `CREATE` definitions", text)
+        self.assertIn("architecture decision", text)
 
     def test_representative_fixture_corpus_exists(self) -> None:
-        corpus = ROOT / "tests" / "fixtures" / "tsql_complex"
-        expected = {"complex_view.sql", "merge_update.sql", "temp_and_derived.sql", "README.md"}
-        self.assertTrue(expected.issubset({path.name for path in corpus.iterdir()}))
+        complex_corpus = ROOT / "tests" / "fixtures" / "tsql_complex"
+        complex_expected = {"complex_view.sql", "merge_update.sql", "temp_and_derived.sql", "README.md"}
+        self.assertTrue(complex_expected.issubset({path.name for path in complex_corpus.iterdir()}))
+
+        real_corpus = ROOT / "tests" / "fixtures" / "real_repository"
+        real_expected = {"json_stage_procedure.sql", "utility_catalog_script.sql"}
+        self.assertTrue(real_expected.issubset({path.name for path in real_corpus.iterdir()}))
 
 
 if __name__ == "__main__":

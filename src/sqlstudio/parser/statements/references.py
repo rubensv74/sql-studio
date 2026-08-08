@@ -23,7 +23,10 @@ class ReferenceStatementParser(StatementParser):
         "JOIN", "LEFT", "ON", "ORDER", "OUTER", "PIVOT", "RIGHT", "SET", "UNION",
         "UNPIVOT", "USING", "WHERE", "WHEN", "WITH",
     }
-    _NON_OBJECT_SOURCES = {"OPENQUERY", "OPENROWSET"}
+    # Built-in rowset/table-valued sources are executable SQL constructs, not
+    # durable repository objects. Keep the set evidence-driven: add entries
+    # only when a real repository fixture demonstrates the false dependency.
+    _NON_OBJECT_SOURCES = {"OPENJSON", "OPENQUERY", "OPENROWSET"}
 
     def parse(self, statement_tokens: Sequence[Token], context: ParserContext) -> bool:
         if not statement_tokens:
