@@ -20,6 +20,7 @@ class ParserContext:
     current_object: Optional[SqlObject] = None
     current_parameter: Optional[Parameter] = None
     seen_variables: set[str] = field(default_factory=set)
+    seen_references: set[tuple[str, str, str, str]] = field(default_factory=set)
     diagnostics: List[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -60,6 +61,15 @@ class ParserContext:
             self.seen_variables.add(name)
 
     def add_reference(self, name: str, *, schema: Optional[str] = None, database: Optional[str] = None, kind: str = "reference") -> None:
+        key = (
+            (database or "").strip().casefold(),
+            (schema or "").strip().casefold(),
+            name.strip().casefold(),
+            kind.strip().casefold(),
+        )
+        if not name.strip() or key in self.seen_references:
+            return
+        self.seen_references.add(key)
         self.references.append(Reference(name=name, schema=schema, database=database, kind=kind))
 
     def add_temporary_table(self, name: str) -> None:

@@ -4,6 +4,7 @@ from typing import Sequence
 
 from ..ast import Token
 from ..context import ParserContext
+from ..names import split_qualified_name, split_qualified_parts
 from .base import StatementParser
 
 
@@ -24,10 +25,8 @@ class ExecutionStatementParser(StatementParser):
                 statement_tokens,
                 index + 1,
             )
-            is_sp_executesql_target = (
-                reference_name is not None
-                and reference_name.split(".")[-1].casefold() == "sp_executesql"
-            )
+            parts = split_qualified_parts(reference_name) if reference_name is not None else []
+            is_sp_executesql_target = bool(parts) and parts[-1].casefold() == "sp_executesql"
             context.dynamic_sql = (
                 context.dynamic_sql
                 or keyword == "SP_EXECUTESQL"
@@ -35,13 +34,14 @@ class ExecutionStatementParser(StatementParser):
                 or reference_name is None
             )
             if reference_name is not None:
-                parts = [part for part in reference_name.split(".") if part]
-                context.add_reference(
-                    parts[-1],
-                    schema=parts[-2] if len(parts) > 1 else None,
-                    database=parts[-3] if len(parts) > 2 else None,
-                    kind="call",
-                )
+                name, schema, database = split_qualified_name(reference_name)
+                if name is not None:
+                    context.add_reference(
+                        name,
+                        schema=schema,
+                        database=database,
+                        kind="call",
+                    )
             return True
 
         return False

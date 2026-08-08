@@ -2,14 +2,15 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.17.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging; performance tooling scope is resolved as post-MVP. Next milestone is representative T-SQL parser hardening.
+**Current version:** `0.18.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging and a representative T-SQL parser regression corpus. Next milestone is repository hygiene around legacy handoff directories.
 
 ## Implemented capabilities
 
 - repository scanning and JSON repository model;
-- T-SQL tokenization and parsing;
+- T-SQL tokenization and parsing with representative complex-syntax regression coverage;
 - SQL object, parameter, variable and reference extraction;
+- bracketed/multipart identifier normalization, CTE/temp suppression and multi-reference extraction;
 - directed dependency graph;
 - dependency serialization;
 - cross-reference analysis;
@@ -65,6 +66,12 @@ Therefore:
 - Circular Dependency Detection reports strongly connected components;
 - Dead Object Detection reviews components with no incoming static references from outside the component.
 
+## Parser boundary
+
+The parser is a dependency-oriented static parser, not a full T-SQL compiler. The `0.18.0` regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temp-table suppression and escaped string literals.
+
+Dynamic SQL and runtime/external constructs remain uncertainty boundaries. SQL-project style sources with one primary schema object per file are the supported repository shape. See [T-SQL Parser Support Contract](docs/parser-support.md) for the precise scope and limitations.
+
 ## Rule Engine
 
 Structural services such as Dependency, Cross Reference and Impact remain independent APIs. Actionable detections are consolidated through `StaticAnalysisRuleEngine`.
@@ -119,7 +126,7 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 python -m build
 ```
 
-GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
+GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, the representative parser fixture, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
 
 ## Repository layout
 
@@ -127,7 +134,7 @@ GitHub Actions validates Python 3.12, compilation, package imports, the full tes
 pyproject.toml               Standard Python build/install metadata
 src/sqlstudio/               Production Python package
   cli.py                     Canonical command-line implementation
-  parser/                    SQL tokenizer and parser
+  parser/                    SQL tokenizer, parser and name normalization
   dependencies/              Canonical dependency graph and resolver
   cross_reference/           Incoming/outgoing cross references
   impact_analysis/           Change-impact traversal and reporting
@@ -135,6 +142,7 @@ src/sqlstudio/               Production Python package
   dead_objects/              Conservative dead-object candidate analysis
   rules/                     Shared rule context, severities, findings and built-in rules
 cli/sqlstudio.py             Repository-checkout compatibility wrapper
+tests/fixtures/tsql_complex/ Representative dependency-oriented T-SQL corpus
 tests/                       Automated tests
 docs/                        Architecture, CLI, packaging and functional contracts
 examples/                    Reproducible SQL examples
@@ -147,6 +155,7 @@ Performance profiler/benchmark concepts are deliberately outside the current pro
 - [Architecture](docs/architecture.md)
 - [CLI](docs/CLI.md)
 - [Packaging and installation](docs/packaging.md)
+- [T-SQL Parser Support Contract](docs/parser-support.md)
 - [Performance Tooling Scope Decision](docs/performance-tooling-scope.md)
 - [Static-analysis Rule Engine contract](docs/static-analysis-rule-engine.md)
 - [Impact Report contract](docs/impact-report.md)
