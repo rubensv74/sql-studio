@@ -3,7 +3,7 @@
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
 **Current version:** `0.19.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging, representative T-SQL parser coverage and a consolidated repository layout. Release/tag/publication policy remains intentionally undecided.
+**Development status:** stabilized MVP static-analysis core with installable packaging, representative T-SQL parser coverage, consolidated repository layout and controlled GitHub Release automation. PyPI publication remains explicitly deferred.
 
 ## Implemented capabilities
 
@@ -23,6 +23,7 @@ SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 - installable Python package with wheel/sdist distributions;
 - `sqlstudio` console command plus repository-wrapper compatibility;
 - canonical `handoffs/` repository path for handoff notes;
+- controlled GitHub Release automation after successful `main` CI;
 - automated validation in GitHub Actions.
 
 ## Installation
@@ -47,7 +48,7 @@ python -m pip install build
 python -m build
 ```
 
-This produces a source distribution and a platform-independent wheel under `dist/`. SQL Studio is installable but is **not automatically published to PyPI**.
+This produces a source distribution and a platform-independent wheel under `dist/`. SQL Studio is installable and GitHub Releases attach both artifacts. It is **not published to PyPI** under the current policy.
 
 ## Dependency semantics
 
@@ -95,6 +96,12 @@ A candidate can still be used by application code, SQL Agent jobs, ETL/orchestra
 `handoffs/` is the canonical path for repository handoff notes. The legacy singular `handoff/` path has been removed; `sqlstudio new-handoff <name>` continues to create `handoffs/<name>.md`.
 
 See [Handoff Repository Layout](docs/handoff-layout.md) for the compatibility decision.
+
+## Release policy
+
+SQL Studio now uses controlled **GitHub Releases only**. A successful `CI` run for `main` triggers the release workflow, which resolves the package version, enforces immutable `vMAJOR.MINOR.PATCH` tags, builds the wheel/sdist and creates the GitHub Release when that version has not yet been released.
+
+PyPI publication is explicitly excluded from this workflow. See [Release Policy](docs/release-policy.md) and [Main Branch Protection](docs/branch-protection.md).
 
 ## Performance tooling boundary
 
@@ -165,6 +172,8 @@ Performance profiler/benchmark concepts are deliberately outside the current pro
 - [Packaging and installation](docs/packaging.md)
 - [T-SQL Parser Support Contract](docs/parser-support.md)
 - [Handoff Repository Layout](docs/handoff-layout.md)
+- [Release Policy](docs/release-policy.md)
+- [Main Branch Protection](docs/branch-protection.md)
 - [Performance Tooling Scope Decision](docs/performance-tooling-scope.md)
 - [Static-analysis Rule Engine contract](docs/static-analysis-rule-engine.md)
 - [Impact Report contract](docs/impact-report.md)
