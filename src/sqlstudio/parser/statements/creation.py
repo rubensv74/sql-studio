@@ -39,19 +39,10 @@ class CreateStatementParser(StatementParser):
             object_keyword_index,
         )
 
-        # Local/global temporary tables are execution-scoped implementation
-        # details, not durable repository objects. Recording them only in the
-        # active scope prevents a temp table from replacing its procedure or
-        # from becoming the primary object of a utility script.
         if object_type == "Table" and name is not None and name.startswith("#"):
             context.add_temporary_table(name)
             return True
 
-        # A permanent CREATE TABLE encountered while already inside a module is
-        # runtime DDL owned by that module, not a second repository definition.
-        # Top-level durable definitions are separated by GO or another top-level
-        # CREATE scope. This guard prevents stored-procedure body DDL from
-        # stealing ownership from the module being parsed.
         if (
             context.current_object is not None
             and context.current_object.object_type in self._MODULE_TYPES
@@ -66,19 +57,18 @@ class CreateStatementParser(StatementParser):
         )
 
         if object_type in {"Stored Procedure", "Function"} and name_index is not None:
-            opening_index = next(
-                (
-                    index
-                    for index in range(name_index + 1, len(statement_tokens))
-                    if statement_tokens[index].value == "("
-                ),
-                None,
+            parameter_start = name_index + 1
+            if (
+                parameter_start < len(statement_tokens)
+                and statement_tokens[parameter_start].value == "("
+            ):
+                parameter_start += 1
+
+            self._parse_parameter_list(
+                TokenStream(list(statement_tokens[parameter_start:])),
+                context,
+                stop_keywords={"AS", "RETURNS", "WITH", "BEGIN"},
             )
-            if opening_index is not None:
-                self._parse_parameter_list(
-                    TokenStream(list(statement_tokens[opening_index + 1 :])),
-                    context,
-                )
 
         return True
 
@@ -109,9 +99,6 @@ class CreateStatementParser(StatementParser):
             if object_type is not None:
                 return object_type, index
 
-            # Once an unsupported CREATE target is established (INDEX,
-            # SCHEMA, TYPE, etc.), do not accidentally reinterpret a later
-            # TABLE/VIEW token as the object kind for this statement.
             if value in {
                 "INDEX",
                 "UNIQUE",
@@ -144,12 +131,16 @@ class CreateStatementParser(StatementParser):
         self,
         stream: TokenStream,
         context: ParserContext,
+        *,
+        stop_keywords: set[str],
     ) -> None:
         while not stream.is_at_end():
             token = stream.current()
             if token is None:
                 break
             if token.value == ")":
+                break
+            if token.kind == "identifier" and token.value.upper() in stop_keywords:
                 break
             if token.value == ",":
                 stream.advance()
@@ -169,6 +160,11 @@ class CreateStatementParser(StatementParser):
                         break
                     if (
                         current.kind == "identifier"
+                        and current.value.upper() in stop_keywords
+                    ):
+                        break
+                    if (
+                        current.kind == "identifier"
                         and current.value.upper() in {"OUTPUT", "OUT"}
                     ):
                         output = True
@@ -179,12 +175,10 @@ class CreateStatementParser(StatementParser):
                         next_token = stream.advance()
                         if next_token is not None:
                             default_value = next_token.value
-                        break
+                        continue
                     if (
                         current.kind == "identifier"
                         and datatype is None
-                        and current.value.upper()
-                        not in {"AS", "RETURNS", "BEGIN", "END"}
                     ):
                         datatype = current.value
                         stream.advance()
