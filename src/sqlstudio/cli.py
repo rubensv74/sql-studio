@@ -7,6 +7,7 @@ from typing import Iterable
 
 from ._version import __version__
 from .repository import RepositoryEngine
+from .source import SqlSource
 
 
 def create_sprint(name: str) -> None:
@@ -28,11 +29,24 @@ def scan_repository(folder: str) -> None:
     print(engine.to_json(folder))
 
 
+def _source_id_for_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def _sql_source_from_path(path: Path) -> SqlSource:
+    return SqlSource.from_path(path, source_id=_source_id_for_path(path))
+
+
 def parse_sql_file(path: str) -> None:
     from .parser import SQLParser
 
+    source_path = Path(path)
     parser = SQLParser()
-    document = parser.parse(Path(path).read_text(encoding="utf-8", errors="ignore"))
+    document = parser.parse_source(_sql_source_from_path(source_path))
     payload = {
         "sql_text": document.sql_text,
         "objects": [
@@ -97,9 +111,11 @@ def _collect_sql_files(paths: Iterable[str], recursive: bool = False) -> list[Pa
     return files
 
 
-def _read_sql_texts(paths: Iterable[str], *, recursive: bool) -> list[str]:
-    files = _collect_sql_files(paths, recursive=recursive)
-    return [path.read_text(encoding="utf-8", errors="ignore") for path in files]
+def _read_sql_sources(paths: Iterable[str], *, recursive: bool) -> list[SqlSource]:
+    return [
+        _sql_source_from_path(path)
+        for path in _collect_sql_files(paths, recursive=recursive)
+    ]
 
 
 def analyze_dependencies(
@@ -111,7 +127,9 @@ def analyze_dependencies(
 ) -> Path | None:
     from .dependencies import DependencyAnalyzer, DependencyGraphSerializer
 
-    graph = DependencyAnalyzer().analyze_many(_read_sql_texts(paths, recursive=recursive))
+    graph = DependencyAnalyzer().analyze_sources(
+        _read_sql_sources(paths, recursive=recursive)
+    )
     indent = None if compact else 2
     if output:
         destination = DependencyGraphSerializer.write_json(graph, output, indent=indent)
@@ -130,7 +148,9 @@ def analyze_cross_references(
 ) -> Path | None:
     from .cross_reference import CrossReferenceAnalyzer, CrossReferenceSerializer
 
-    references = CrossReferenceAnalyzer().analyze_many(_read_sql_texts(paths, recursive=recursive))
+    references = CrossReferenceAnalyzer().analyze_sources(
+        _read_sql_sources(paths, recursive=recursive)
+    )
     indent = None if compact else 2
     if output:
         destination = CrossReferenceSerializer.write_json(references, output, indent=indent)
@@ -151,8 +171,8 @@ def analyze_impact(
 ) -> Path | None:
     from .impact_analysis import ImpactAnalyzer, ImpactReportExporter, ImpactResultSerializer
 
-    result = ImpactAnalyzer().analyze_many(
-        _read_sql_texts(paths, recursive=recursive), root_object
+    result = ImpactAnalyzer().analyze_sources(
+        _read_sql_sources(paths, recursive=recursive), root_object
     )
     indent = None if compact else 2
     if html:
@@ -180,8 +200,8 @@ def analyze_circular_dependencies(
 ) -> Path | None:
     from .circular_dependencies import CircularDependencyAnalyzer, CircularDependencySerializer
 
-    cycles = CircularDependencyAnalyzer().analyze_many(
-        _read_sql_texts(paths, recursive=recursive)
+    cycles = CircularDependencyAnalyzer().analyze_sources(
+        _read_sql_sources(paths, recursive=recursive)
     )
     indent = None if compact else 2
     if output:
@@ -202,8 +222,8 @@ def analyze_dead_objects(
 ) -> Path | None:
     from .dead_objects import DeadObjectAnalyzer, DeadObjectSerializer
 
-    result = DeadObjectAnalyzer().analyze_many(
-        _read_sql_texts(paths, recursive=recursive),
+    result = DeadObjectAnalyzer().analyze_sources(
+        _read_sql_sources(paths, recursive=recursive),
         entry_points=entry_points,
     )
     indent = None if compact else 2
@@ -228,8 +248,8 @@ def analyze_static_rules(
 
     from .rules import StaticAnalysisAnalyzer, StaticAnalysisSerializer
 
-    result = StaticAnalysisAnalyzer().analyze_many(
-        _read_sql_texts(paths, recursive=recursive),
+    result = StaticAnalysisAnalyzer().analyze_sources(
+        _read_sql_sources(paths, recursive=recursive),
         entry_points=entry_points,
         rule_ids=rule_ids,
     )
