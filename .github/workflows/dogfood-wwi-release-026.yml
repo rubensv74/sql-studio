@@ -1,0 +1,130 @@
+name: WWI Release 0.26 Dogfood
+
+on:
+  push:
+    branches:
+      - "agent/dogfood-wwi-release-026"
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Microsoft SQL Server samples
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/sql-server-samples
+          ref: 1ab31bc560415b570d57bb5ff9896f4698891321
+          path: samples-repo
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install released SQL Studio 0.26.0
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps \
+            https://github.com/rubensv74/sql-studio/releases/download/v0.26.0/sql_studio-0.26.0-py3-none-any.whl
+          test "$(sqlstudio --version)" = "sqlstudio 0.26.0"
+
+      - name: Analyze Wide World Importers SSDT
+        run: |
+          target="samples-repo/samples/databases/wide-world-importers/wwi-ssdt"
+          test -d "$target"
+          sqlstudio repository-analysis "$target" --recursive \
+            --output /tmp/wwi-repository-analysis-026.json \
+            --html /tmp/wwi-repository-analysis-026.html
+          test -s /tmp/wwi-repository-analysis-026.json
+          test -s /tmp/wwi-repository-analysis-026.html
+
+      - name: Print exploratory evidence
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/wwi-repository-analysis-026.json').read_text(encoding='utf-8'))
+          summary = payload['summary']
+          print('DOGFOOD_CORPUS=microsoft/sql-server-samples Wide World Importers SSDT')
+          print('DOGFOOD_CORPUS_COMMIT=1ab31bc560415b570d57bb5ff9896f4698891321')
+          print('DOGFOOD_SQLSTUDIO_VERSION=0.26.0')
+          for key in (
+              'source_count',
+              'parsed_object_count',
+              'durable_object_count',
+              'script_object_count',
+              'graph_node_count',
+              'dependency_edge_count',
+              'circular_component_count',
+              'dead_object_candidate_count',
+              'finding_count',
+              'error_count',
+              'warning_count',
+              'info_count',
+              'dynamic_sql_object_count',
+          ):
+              print(f'DOGFOOD_{key.upper()}={summary[key]}')
+
+          unknown = [
+              node['name'] for node in payload['dependencies']['nodes']
+              if node['object_type'] == 'Unknown'
+          ]
+          print(f'DOGFOOD_UNKNOWN_NODE_COUNT={len(unknown)}')
+          for name in unknown[:80]:
+              print('  UNKNOWN ' + name)
+
+          suspicious_exact = {
+              'set','on','as','where','from','join','with','select','insert','update',
+              'delete','values','into','by','and','or','when','then','else','end',
+          }
+          suspicious = [
+              name for name in unknown
+              if name.casefold() in suspicious_exact
+              or re.fullmatch(r'[a-zA-Z]{1,2}', name)
+          ]
+          print(f'DOGFOOD_SUSPICIOUS_UNKNOWN_COUNT={len(suspicious)}')
+          for name in suspicious[:80]:
+              print('  SUSPICIOUS_UNKNOWN ' + name)
+
+          multi_object_sources = [source for source in payload['sources'] if len(source['objects']) > 1]
+          print(f'DOGFOOD_MULTI_OBJECT_SOURCE_COUNT={len(multi_object_sources)}')
+          for source in multi_object_sources[:40]:
+              print(f"  MULTI {source['source_id']} -> {', '.join(source['objects'])}")
+
+          print('DOGFOOD_KEY_OBJECTS')
+          key_objects = sorted(
+              payload['objects'],
+              key=lambda item: (-item['dependent_count'], item['name'].casefold()),
+          )[:30]
+          for item in key_objects:
+              print(
+                  f"  {item['name']} [{item['object_type']}] "
+                  f"dependents={item['dependent_count']} dependencies={item['dependency_count']} "
+                  f"source={item['source_id']}"
+              )
+
+          print('DOGFOOD_FINDINGS')
+          for finding in payload['findings'][:100]:
+              print(
+                  f"  {finding['severity']} {finding['rule_id']} "
+                  f"objects={','.join(finding['objects'])} title={finding['title']}"
+              )
+
+          print('DOGFOOD_DYNAMIC_SQL_OBJECTS')
+          for name in payload['uncertainty']['dynamic_sql_objects'][:100]:
+              print('  ' + name)
+          PY
+
+      - name: Upload WWI dogfood report
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwi-repository-analysis-v0.26.0
+          path: |
+            /tmp/wwi-repository-analysis-026.json
+            /tmp/wwi-repository-analysis-026.html
+          if-no-files-found: error
