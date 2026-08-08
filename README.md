@@ -2,8 +2,8 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.18.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging and a representative T-SQL parser regression corpus. Next milestone is repository hygiene around legacy handoff directories.
+**Current version:** `0.19.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging, representative T-SQL parser coverage and a consolidated repository layout. Release/tag/publication policy remains intentionally undecided.
 
 ## Implemented capabilities
 
@@ -22,6 +22,7 @@ SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 - JSON and self-contained HTML impact reports;
 - installable Python package with wheel/sdist distributions;
 - `sqlstudio` console command plus repository-wrapper compatibility;
+- canonical `handoffs/` repository path for handoff notes;
 - automated validation in GitHub Actions.
 
 ## Installation
@@ -68,7 +69,7 @@ Therefore:
 
 ## Parser boundary
 
-The parser is a dependency-oriented static parser, not a full T-SQL compiler. The `0.18.0` regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temp-table suppression and escaped string literals.
+The parser is a dependency-oriented static parser, not a full T-SQL compiler. The representative regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temp-table suppression and escaped string literals.
 
 Dynamic SQL and runtime/external constructs remain uncertainty boundaries. SQL-project style sources with one primary schema object per file are the supported repository shape. See [T-SQL Parser Support Contract](docs/parser-support.md) for the precise scope and limitations.
 
@@ -88,6 +89,12 @@ Built-in rules:
 Dead Object Detection produces **candidates only**. It never asserts that an object is safe to delete.
 
 A candidate can still be used by application code, SQL Agent jobs, ETL/orchestration, reporting tools, external databases, permissions-driven workflows or dynamic SQL that is not statically resolvable. Known externally invoked SQL objects can be supplied with repeatable `--entry-point` arguments. Triggers are excluded by default because their invocation is implicit.
+
+## Repository handoffs
+
+`handoffs/` is the canonical path for repository handoff notes. The legacy singular `handoff/` path has been removed; `sqlstudio new-handoff <name>` continues to create `handoffs/<name>.md`.
+
+See [Handoff Repository Layout](docs/handoff-layout.md) for the compatibility decision.
 
 ## Performance tooling boundary
 
@@ -142,6 +149,7 @@ src/sqlstudio/               Production Python package
   dead_objects/              Conservative dead-object candidate analysis
   rules/                     Shared rule context, severities, findings and built-in rules
 cli/sqlstudio.py             Repository-checkout compatibility wrapper
+handoffs/                    Canonical handoff notes/template
 tests/fixtures/tsql_complex/ Representative dependency-oriented T-SQL corpus
 tests/                       Automated tests
 docs/                        Architecture, CLI, packaging and functional contracts
@@ -156,6 +164,7 @@ Performance profiler/benchmark concepts are deliberately outside the current pro
 - [CLI](docs/CLI.md)
 - [Packaging and installation](docs/packaging.md)
 - [T-SQL Parser Support Contract](docs/parser-support.md)
+- [Handoff Repository Layout](docs/handoff-layout.md)
 - [Performance Tooling Scope Decision](docs/performance-tooling-scope.md)
 - [Static-analysis Rule Engine contract](docs/static-analysis-rule-engine.md)
 - [Impact Report contract](docs/impact-report.md)

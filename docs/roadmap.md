@@ -14,14 +14,14 @@
 - Installable Python packaging — `pyproject.toml`, sdist, wheel and `sqlstudio` console entry point
 - Python 3.12 CI baseline with installed-wheel validation
 - Repository hygiene, full MIT license and documentation alignment
+- Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 
 ## Next
 
-1. Resolve repository hygiene around `handoff/` versus `handoffs/`
-2. Define release/tag/PyPI publication policy
-3. Evaluate `main` branch protection before the first tagged release
-4. Expand the representative parser corpus when concrete repository syntax exposes a missing dependency pattern
+1. Define release/tag/PyPI publication policy
+2. Evaluate `main` branch protection before the first tagged release
+3. Expand the representative parser corpus when concrete repository syntax exposes a missing dependency pattern
 
 ## Parser gates
 
@@ -30,6 +30,12 @@ The parser is dependency-oriented rather than a complete T-SQL compiler. Parser 
 CTE aliases, temp tables and table variables must not become durable dependency nodes. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
 Current support and limitations are frozen in `docs/parser-support.md`.
+
+## Repository hygiene gate
+
+`handoffs/` is the canonical handoff-note directory. The legacy singular `handoff/` path must not be recreated unless a separate migration decision explicitly supersedes this contract.
+
+The `new-handoff` command remains compatible and writes to `handoffs/`.
 
 ## Static-analysis gates
 
