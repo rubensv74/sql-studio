@@ -24,6 +24,15 @@ class CreateStatementParser(StatementParser):
             return False
 
         name, schema = self._extract_name_and_schema(statement_tokens, 0)
+
+        # Local/global temporary tables are execution-scoped implementation
+        # details, not durable repository objects. Recording them only in the
+        # temporary-table collection also prevents a utility script whose first
+        # CREATE is temporary from being misclassified as a durable Table.
+        if object_type == "Table" and name is not None and name.startswith("#"):
+            context.add_temporary_table(name)
+            return True
+
         object_name = name or f"Unnamed{object_type}"
         context.add_object(SqlObject(name=object_name, schema=schema, object_type=object_type))
 
