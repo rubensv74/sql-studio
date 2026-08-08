@@ -1,0 +1,87 @@
+name: Diagnose WWI WITH Target
+
+on:
+  push:
+    branches:
+      - "agent/dogfood-wwi-release-026"
+    paths:
+      - ".github/workflows/diagnose-wwi-with-026.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Microsoft SQL Server samples
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/sql-server-samples
+          ref: 1ab31bc560415b570d57bb5ff9896f4698891321
+          path: samples-repo
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install released SQL Studio 0.26.0
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps \
+            https://github.com/rubensv74/sql-studio/releases/download/v0.26.0/sql_studio-0.26.0-py3-none-any.whl
+
+      - name: Trace only WITH false target
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from sqlstudio import SQLParser, SqlSource
+          from sqlstudio.dependencies import DependencyResolver
+
+          root = Path('samples-repo/samples/databases/wide-world-importers/wwi-ssdt')
+          parser = SQLParser()
+          documents = []
+          object_to_source = {}
+
+          for path in sorted(root.rglob('*.sql')):
+              source_id = path.as_posix()
+              sql = path.read_text(encoding='utf-8', errors='ignore')
+              doc = parser.parse_source(SqlSource(source_id, sql, path=source_id))
+              documents.append(doc)
+              for obj in doc.objects:
+                  name = f'{obj.schema}.{obj.name}' if obj.schema else obj.name
+                  object_to_source[name.casefold()] = (path, doc)
+
+          graph = DependencyResolver().resolve(documents)
+          matches = [edge for edge in graph.edges if edge.target.name.casefold() == 'with']
+          print('WITH_EDGE_COUNT', len(matches))
+          for edge in matches:
+              path, doc = object_to_source[edge.source.name.casefold()]
+              print(f'WITH_EDGE source={edge.source.name} kind={edge.kind.value} file={path}')
+              for obj in doc.objects:
+                  name = f'{obj.schema}.{obj.name}' if obj.schema else obj.name
+                  if name.casefold() != edge.source.name.casefold():
+                      continue
+                  for ref in obj.references:
+                      if ref.name.casefold() == 'with':
+                          print('WITH_BAD_REF', ref.database, ref.schema, ref.name, ref.kind)
+              sql = path.read_text(encoding='utf-8', errors='ignore')
+              lines = sql.splitlines()
+              for number, line in enumerate(lines, 1):
+                  upper = line.upper()
+                  if '[UPDATE]' in upper or ' UPDATE ' in f' {upper} ' or 'WITH' in upper:
+                      lo = max(1, number - 3)
+                      hi = min(len(lines), number + 3)
+                      print(f'CONTEXT_AROUND_LINE={number}')
+                      for n in range(lo, hi + 1):
+                          print(f'{n:04d}: {lines[n-1]}')
+                      print('---')
+              raw_doc = SQLParser().parse(sql)
+              tokens = raw_doc.tokens
+              for i, token in enumerate(tokens):
+                  if token.kind == 'identifier' and token.value.upper() == 'UPDATE':
+                      lo = max(0, i - 5)
+                      hi = min(len(tokens), i + 14)
+                      print('UPDATE_TOKEN_CONTEXT', i, '::', ' '.join(t.value for t in tokens[lo:hi]))
+          PY
