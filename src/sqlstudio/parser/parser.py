@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import List, Sequence
+
+from sqlstudio.source import SqlSource
 
 from .ast import SqlDocument, Token
 from .context import ParserContext
@@ -19,6 +22,23 @@ class SQLParser:
         self._sql_text = ""
 
     def parse(self, sql_text: str) -> SqlDocument:
+        """Parse raw SQL text using the historical text-only contract."""
+
+        return self._parse(sql_text)
+
+    def parse_source(self, source: SqlSource) -> SqlDocument:
+        """Parse a physical source and give script-only scopes stable identity."""
+
+        document = self._parse(source.sql_text)
+        objects = [
+            replace(sql_object, name=source.script_object_name)
+            if sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
+            else sql_object
+            for sql_object in document.objects
+        ]
+        return SqlDocument(sql_text=document.sql_text, objects=objects, tokens=document.tokens)
+
+    def _parse(self, sql_text: str) -> SqlDocument:
         if not sql_text or not sql_text.strip():
             return SqlDocument(sql_text=sql_text, objects=[])
 
@@ -63,10 +83,6 @@ class SQLParser:
         if not filtered:
             return
 
-        # Creation must run first because it establishes the owner for every
-        # piece of evidence found in the same statement. This is especially
-        # important for CREATE VIEW/PROCEDURE statements whose first query
-        # references occur before the first semicolon.
         parsers = [
             CreateStatementParser(),
             DeclarationStatementParser(),
@@ -76,10 +92,6 @@ class SQLParser:
         for parser in parsers:
             parser.parse(filtered, context)
 
-        # Temporary identifiers are scope-local evidence. Scan them only after
-        # creation parsing has established the current durable owner; scanning
-        # them while tokenizing would incorrectly create a script scope before
-        # a CREATE PROCEDURE/VIEW statement had a chance to open its scope.
         for token in filtered:
             if token.kind == "identifier" and token.value.startswith("#"):
                 context.add_temporary_table(token.value)

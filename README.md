@@ -2,42 +2,33 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.23.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, evidence-driven parser hardening, object-scoped multi-definition parsing, structural foreign-key dependency evidence and real SQL Server procedure-signature handling. PyPI publication remains explicitly deferred.
+**Current version:** `0.24.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, evidence-driven parser hardening, object-scoped multi-definition parsing and physical SQL source identity. PyPI publication remains explicitly deferred.
 
 ## Implemented capabilities
 
 - repository scanning and JSON repository model;
-- T-SQL tokenization and parsing with representative complex-syntax regression coverage;
+- `SqlSource` physical-source identity for repository/file analysis;
+- T-SQL tokenization and dependency-oriented parsing;
 - multiple durable SQL objects per `.sql` source with isolated object-scoped evidence;
 - SQL object, parameter, variable and reference extraction;
-- real SQL Server procedure/function parameters with parameterized datatypes, defaults and `OUTPUT` markers;
-- case-insensitive separation of module parameters from local variables;
+- SQL Server procedure/function parameters with parameterized datatypes, defaults and `OUTPUT` markers;
 - inline `FOREIGN KEY ... REFERENCES` dependency extraction;
 - bracketed/multipart identifier normalization, CTE/temp suppression and multi-reference extraction;
 - standalone `GO` batch-boundary handling;
 - guarded migration DDL discovery;
-- stored-procedure parameters with or without outer parentheses;
 - transient `CREATE TABLE #temp` handling without durable graph pollution;
 - built-in rowset suppression for `OPENJSON`, `OPENQUERY` and `OPENROWSET`;
-- directed dependency graph;
-- dependency serialization;
-- cross-reference analysis;
-- transitive impact analysis;
+- directed dependency graph, cross references and transitive impact analysis;
 - circular dependency detection using strongly connected components;
 - conservative dead-object candidate detection;
-- consolidated static-analysis Rule Engine with normalized severities/findings;
-- CI quality gates through `analyze --fail-on`;
+- consolidated static-analysis Rule Engine with severity gates;
 - JSON and self-contained HTML impact reports;
 - installable Python package with wheel/sdist distributions;
 - `sqlstudio` console command plus repository-wrapper compatibility;
-- canonical `handoffs/` repository path for handoff notes;
-- controlled GitHub Release automation after successful `main` CI;
-- automated validation in GitHub Actions.
+- controlled GitHub Release automation after successful `main` CI.
 
 ## Installation
-
-From a repository checkout:
 
 ```bash
 python -m pip install .
@@ -48,97 +39,76 @@ For development:
 
 ```bash
 python -m pip install -e .
-```
-
-Build distributable artifacts with:
-
-```bash
-python -m pip install build
 python -m build
 ```
 
-This produces a source distribution and a platform-independent wheel under `dist/`. SQL Studio is installable and GitHub Releases attach both artifacts. It is **not published to PyPI** under the current policy.
+SQL Studio is installable and GitHub Releases attach wheel and sdist artifacts. It is **not published to PyPI** under the current policy.
 
 ## Dependency semantics
 
-The dependency graph stores edges as:
+The graph stores:
 
 ```text
 source -> target
 ```
 
-meaning that `source` depends on `target`.
+meaning `source` depends on `target`.
 
 Therefore:
 
-- `dependencies_of(A)` answers **what A uses**;
-- `dependents_of(A)` answers **what uses A**;
+- `dependencies_of(A)` answers what A uses;
+- `dependents_of(A)` answers what uses A;
 - Impact Analysis walks `dependents_of()` transitively;
 - Circular Dependency Detection reports strongly connected components;
-- Dead Object Detection reviews components with no incoming static references from outside the component.
+- Dead Object Detection reviews durable components with no incoming static references from outside the component.
 
-An inline foreign key is represented with the same structural direction. If `Child` contains `FOREIGN KEY ... REFERENCES Parent`, the graph contains `Child -> Parent`.
+## Physical SQL source identity
+
+Repository SQL is not always a schema definition. Seed, migration and maintenance files can contain real dependencies while defining no procedure, view, function or table.
+
+`0.24.0` introduces:
+
+```python
+from sqlstudio import SqlSource
+
+source = SqlSource(
+    source_id="sql/import/003_seed_import_columns_v3.sql",
+    sql_text="SELECT * FROM warroom.ImportColumnDefinition;",
+)
+```
+
+Source-aware parsing maps only fallback script scopes to:
+
+```text
+script:sql/import/003_seed_import_columns_v3.sql
+```
+
+A durable object such as `dbo.Report` keeps its SQL identity even when parsed through `SqlSource`.
+
+All repository-facing analyzers expose `analyze_source()` / `analyze_sources()`. Existing raw-text `parse()`, `analyze()` and `analyze_many()` methods remain compatible. The CLI uses the source-aware path so independent physical scripts no longer collapse into one `UnnamedScript` graph node.
+
+See [SQL Source Identity](docs/sql-source-identity.md).
 
 ## Parser boundary
 
-The parser is dependency-oriented, not a full T-SQL compiler. The representative regression corpus covers bracketed/multipart names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition source files, inline foreign keys, real procedure signatures and escaped string literals.
+The parser is dependency-oriented, not a full T-SQL compiler. The regression corpus covers multipart/bracketed names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition files, inline foreign keys, real procedure signatures and escaped string literals.
 
-### Object-scoped ownership
+One physical source may define several durable objects. Each object owns only its own parameters, variables, references/calls, temporary tables and dynamic-SQL evidence. Dynamic SQL and runtime/external constructs remain uncertainty boundaries.
 
-One physical `.sql` file may define several durable schema objects. SQL Studio emits each as its own `SqlObject` and isolates parameters, variables, references/calls, temporary tables and dynamic-SQL evidence.
+Stored procedure/function parameter parsing distinguishes optional outer signature parentheses from datatype parentheses such as `nvarchar(320)`, `decimal(18,4)` and `datetime2(3)`. `SET @Parameter = ...` does not reclassify an existing parameter as a local variable.
 
-The active scope closes when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends. This prevents dependency evidence from one object leaking into another object defined later in the same file.
+Inline foreign keys are represented with the same graph direction: `Child -> Parent`. Standalone `ALTER TABLE ... FOREIGN KEY` ownership remains deferred until representative repository evidence requires it.
 
-### Procedure and function signatures
+See [T-SQL Parser Support Contract](docs/parser-support.md) and [Object-Scoped Parser Architecture](docs/object-scoped-parser.md).
 
-Stored procedures may omit outer parentheses around their parameters while functions commonly use them. SQL Studio distinguishes those optional signature parentheses from datatype parentheses such as `nvarchar(320)`, `decimal(18,4)` and `datetime2(3)`. Inner datatype commas or closing parentheses therefore do not truncate the module signature.
-
-Defaults and `OUTPUT` / `OUT` markers remain attached to the correct parameter. Later assignments such as `SET @Parameter = ...` do not reclassify an existing parameter as a local variable; true `DECLARE` variables remain object-scoped variable evidence.
-
-### DDL references
-
-Inline `FOREIGN KEY (...) REFERENCES schema.Table (...)` targets are emitted as durable dependencies owned by the defining table. `REFERENCES` is not treated as a generic relation keyword: same-statement `FOREIGN KEY` evidence is required so permission syntax such as `GRANT REFERENCES ON ...` cannot create false graph targets.
-
-Standalone `ALTER TABLE ... FOREIGN KEY` ownership is not approximated as a Script-sourced edge; it remains deferred until a representative repository case requires a reliable altered-table source scope.
-
-Dynamic SQL and runtime/external constructs remain uncertainty boundaries. Multi-definition support is guaranteed only when source structure provides reliable ownership boundaries; SQL Studio prefers incomplete evidence over a misleading graph.
-
-See [T-SQL Parser Support Contract](docs/parser-support.md), [Object-Scoped Parser Architecture](docs/object-scoped-parser.md), [Real Repository Validation — Pass 1](docs/real-repository-validation.md), [Pass 2](docs/real-repository-validation-pass-2.md) and [Pass 3](docs/real-repository-validation-pass-3.md).
-
-## Rule Engine
-
-Structural services such as Dependency, Cross Reference and Impact remain independent APIs. Actionable detections are consolidated through `StaticAnalysisRuleEngine`.
+## Rule Engine and dead-object safety
 
 Built-in rules:
 
 - `SQL001` — Circular dependency — `error`;
 - `SQL002` — Dead object candidate — `warning`.
 
-`StaticAnalysisAnalyzer` parses each SQL input once, builds one dependency graph and shares that context across all selected rules. Existing dedicated analyzers/commands remain supported.
-
-## Dead-object safety contract
-
-Dead Object Detection produces **candidates only**. It never asserts that an object is safe to delete.
-
-A candidate can still be used by application code, SQL Agent jobs, ETL/orchestration, reporting tools, external databases, permissions-driven workflows or dynamic SQL that is not statically resolvable. Known externally invoked SQL objects can be supplied with repeatable `--entry-point` arguments. Triggers are excluded by default because their invocation is implicit.
-
-## Repository handoffs
-
-`handoffs/` is the canonical path for repository handoff notes. The legacy singular `handoff/` path has been removed; `sqlstudio new-handoff <name>` continues to create `handoffs/<name>.md`.
-
-See [Handoff Repository Layout](docs/handoff-layout.md) for the compatibility decision.
-
-## Release policy
-
-SQL Studio uses controlled **GitHub Releases only**. A successful `CI` run for `main` triggers the release workflow, which resolves the package version, enforces immutable `vMAJOR.MINOR.PATCH` tags, builds the wheel/sdist and creates the GitHub Release when that version has not yet been released.
-
-PyPI publication is explicitly excluded from this workflow. See [Release Policy](docs/release-policy.md) and [Main Branch Protection](docs/branch-protection.md).
-
-## Performance tooling boundary
-
-Runtime profiling and benchmark tooling are explicitly **post-MVP**. Earlier repository scripts only generated empty templates or stored caller-supplied metrics; they did not perform real measurement and have been removed from the supported baseline.
-
-Any future profiler/benchmark implementation must cross a documented re-entry gate covering metric provenance, database/runtime boundaries, safety, reproducibility, versioned schemas, tests and CI. See [Performance Tooling Scope Decision](docs/performance-tooling-scope.md).
+Dead Object Detection produces **candidates only** and never asserts an object is safe to delete. Script nodes are not dead-object candidates. Known externally invoked objects can be supplied with repeatable `--entry-point` arguments.
 
 ## Quick start
 
@@ -156,13 +126,11 @@ sqlstudio analyze examples/circular_dependencies --rule SQL001 --fail-on error
 
 `analyze --fail-on` returns exit code `2` when the configured finding threshold is reached. Exit code `1` remains reserved for handled execution/input failures.
 
-The historical repository invocation remains supported:
+Historical repository invocation remains supported:
 
 ```bash
 python cli/sqlstudio.py --help
 ```
-
-That file is a compatibility wrapper over the canonical `sqlstudio.cli` implementation.
 
 ## Validation
 
@@ -171,56 +139,33 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 python -m build
 ```
 
-GitHub Actions validates Python 3.12, compilation, package imports, the full test suite, representative complex/parser ownership/procedure-signature fixtures, legacy wrapper smoke paths, wheel/sdist construction and the installed `sqlstudio` command from outside the repository checkout.
+GitHub Actions validates Python 3.12, compilation, imports, the full test suite, source-aware script identity, representative parser fixtures, legacy wrapper smoke paths, wheel/sdist construction and execution of the installed `sqlstudio` command outside the repository checkout.
 
-## Repository layout
+## Release policy
 
-```text
-pyproject.toml                         Standard Python build/install metadata
-src/sqlstudio/                         Production Python package
-  cli.py                               Canonical command-line implementation
-  parser/                              SQL tokenizer, parser and object-scope ownership
-  dependencies/                        Canonical dependency graph and resolver
-  cross_reference/                     Incoming/outgoing cross references
-  impact_analysis/                     Change-impact traversal and reporting
-  circular_dependencies/               SCC-based cycle detection
-  dead_objects/                        Conservative dead-object candidate analysis
-  rules/                               Shared rule context, severities, findings and built-in rules
-cli/sqlstudio.py                       Repository-checkout compatibility wrapper
-handoffs/                              Canonical handoff notes/template
-tests/fixtures/tsql_complex/           Representative dependency-oriented T-SQL corpus
-tests/fixtures/real_repository/        Reduced cases derived from real-repository failures
-tests/fixtures/object_scopes/          Multi-definition ownership, DDL dependency and procedure-signature corpus
-tests/                                 Automated tests
-docs/                                  Architecture, CLI, packaging and functional contracts
-examples/                              Reproducible SQL examples
-```
+SQL Studio uses controlled **GitHub Releases only**. Successful `main` CI triggers the release workflow, which validates version identity, builds wheel/sdist artifacts and creates the SemVer release when it does not already exist. PyPI publication is explicitly excluded.
 
-Performance profiler/benchmark concepts are deliberately outside the current production tree until the documented post-MVP re-entry gate is satisfied.
+See [Release Policy](docs/release-policy.md) and [Main Branch Protection](docs/branch-protection.md).
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [CLI](docs/CLI.md)
 - [Packaging and installation](docs/packaging.md)
+- [SQL Source Identity](docs/sql-source-identity.md)
 - [T-SQL Parser Support Contract](docs/parser-support.md)
 - [Object-Scoped Parser Architecture](docs/object-scoped-parser.md)
 - [Real Repository Validation — Pass 1](docs/real-repository-validation.md)
 - [Real Repository Validation — Pass 2](docs/real-repository-validation-pass-2.md)
 - [Real Repository Validation — Pass 3](docs/real-repository-validation-pass-3.md)
 - [Handoff Repository Layout](docs/handoff-layout.md)
-- [Release Policy](docs/release-policy.md)
-- [Main Branch Protection](docs/branch-protection.md)
 - [Performance Tooling Scope Decision](docs/performance-tooling-scope.md)
 - [Static-analysis Rule Engine contract](docs/static-analysis-rule-engine.md)
 - [Impact Report contract](docs/impact-report.md)
 - [Circular Dependency Detection contract](docs/circular-dependency-detection.md)
 - [Dead Object Detection contract](docs/dead-object-detection.md)
 - [Roadmap](docs/roadmap.md)
-- [Development audit — historical baseline](docs/development-audit.md)
-- [Development audit — remediation status](docs/development-audit-remediation.md)
-- [AI development rules](AI_DEVELOPMENT.md)
 
 ## Development rule
 
-Git is the source of truth. Functional changes require tests, reproducible validation and Conventional Commits. See `AI_DEVELOPMENT.md` for the repository working agreement.
+Git is the source of truth. Functional changes require tests, reproducible validation and Conventional Commits. See `AI_DEVELOPMENT.md`.

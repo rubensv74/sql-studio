@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.24.0 - 2026-08-08
+
+### Added
+- `SqlSource` as the physical SQL input model with stable caller-controlled `source_id`, SQL text and optional path metadata.
+- Source-aware `SQLParser.parse_source()` while retaining the historical text-only `parse()` API.
+- `analyze_source()` / `analyze_sources()` entry points across Dependency, Cross Reference, Impact, Circular Dependency, Dead Object and Static-analysis analyzers.
+- Regression fixtures and tests proving independent physical scripts remain distinct graph nodes.
+- `docs/sql-source-identity.md` as the frozen architecture contract for physical-source provenance.
+- CI smoke coverage for source identity through both the repository wrapper and the installed wheel outside the checkout.
+
+### Fixed
+- Multiple SQL files without durable schema definitions no longer collapse into the shared `UnnamedScript` node when analyzed through the repository/file pipeline.
+- Script-level dependencies are now attributed to `script:<source_id>` rather than being merged across unrelated physical files.
+
+### Changed
+- CLI file and directory analysis preserves physical source identity until SQL object ownership is established.
+- CLI source IDs are repository-relative to the current working directory when possible and otherwise use normalized absolute paths.
+- `SqlSource.source_id` normalizes path separators to `/` and removes leading `./`.
+
+### Compatibility
+- Public `SqlDocument`, `SqlObject`, `Reference` and existing serialized schemas remain unchanged.
+- Durable SQL objects keep their schema identity; only fallback Script scopes receive `script:<source_id>` names.
+- Raw-text `parse()`, `analyze()` and `analyze_many()` methods remain supported with historical behavior, including `UnnamedScript` where applicable.
+- The repository compatibility wrapper retains its historical text-reader helper.
+- Canonical dependency direction remains `source -> target`.
+
 ## 0.23.0 - 2026-08-08
 
 ### Added

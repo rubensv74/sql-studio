@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 from sqlstudio.dependencies import DependencyResolver
 from sqlstudio.parser import SQLParser
+from sqlstudio.source import SqlSource
 
 from .engine import StaticAnalysisRuleEngine
 from .models import RuleContext, StaticAnalysisResult
@@ -53,9 +54,49 @@ class StaticAnalysisAnalyzer:
         rule_ids: Iterable[str] = (),
     ) -> StaticAnalysisResult:
         documents = tuple(self._parser.parse(sql_text) for sql_text in sql_texts)
+        return self._analyze_documents(
+            documents,
+            entry_points=entry_points,
+            rule_ids=rule_ids,
+        )
+
+    def analyze_source(
+        self,
+        source: SqlSource,
+        *,
+        entry_points: Iterable[str] = (),
+        rule_ids: Iterable[str] = (),
+    ) -> StaticAnalysisResult:
+        return self.analyze_sources(
+            [source],
+            entry_points=entry_points,
+            rule_ids=rule_ids,
+        )
+
+    def analyze_sources(
+        self,
+        sources: Iterable[SqlSource],
+        *,
+        entry_points: Iterable[str] = (),
+        rule_ids: Iterable[str] = (),
+    ) -> StaticAnalysisResult:
+        documents = tuple(self._parser.parse_source(source) for source in sources)
+        return self._analyze_documents(
+            documents,
+            entry_points=entry_points,
+            rule_ids=rule_ids,
+        )
+
+    def _analyze_documents(
+        self,
+        documents,
+        *,
+        entry_points: Iterable[str],
+        rule_ids: Iterable[str],
+    ) -> StaticAnalysisResult:
         graph = self._resolver.resolve(documents)
         context = RuleContext(
-            documents=documents,
+            documents=tuple(documents),
             graph=graph,
             entry_points=self._normalize_entry_points(entry_points),
         )

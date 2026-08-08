@@ -15,7 +15,7 @@ sys.path.insert(0, src_root_text)
 
 from sqlstudio.cli import (
     _collect_sql_files,
-    _read_sql_texts,
+    _read_sql_sources,
     analyze_circular_dependencies,
     analyze_cross_references,
     analyze_dead_objects,
@@ -30,9 +30,17 @@ from sqlstudio.cli import (
     scan_repository,
 )
 
+
+def _read_sql_texts(paths, *, recursive=False):
+    """Legacy wrapper helper retained for repository-checkout compatibility."""
+
+    return [source.sql_text for source in _read_sql_sources(paths, recursive=recursive)]
+
+
 __all__ = [
     "_collect_sql_files",
     "_read_sql_texts",
+    "_read_sql_sources",
     "analyze_circular_dependencies",
     "analyze_cross_references",
     "analyze_dead_objects",

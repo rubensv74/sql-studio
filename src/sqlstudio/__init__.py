@@ -37,6 +37,7 @@ from .rules import (
     StaticAnalysisRuleEngine,
     StaticAnalysisSerializer,
 )
+from .source import SqlSource
 
 __all__ = [
     "__version__",
@@ -69,6 +70,7 @@ __all__ = [
     "Severity",
     "SqlDocument",
     "SqlObject",
+    "SqlSource",
     "StaticAnalysisAnalyzer",
     "StaticAnalysisResult",
     "StaticAnalysisRule",
