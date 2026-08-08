@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.22.0 - 2026-08-08
+
+### Added
+- Inline foreign-key dependency extraction for `FOREIGN KEY (...) REFERENCES schema.Table (...)` constraints.
+- Reduced real-repository regression fixture derived from the PULSE import-foundation schema shape.
+- Explicit regression coverage proving child-table dependency edges use the object-scoped durable table as their source.
+- Negative coverage for `GRANT REFERENCES ON ...` permission syntax so `REFERENCES` is not treated as a generic relation keyword.
+- `docs/real-repository-validation-pass-2.md` documenting the evidence, fix and deferred standalone `ALTER TABLE` ownership boundary.
+
+### Fixed
+- Dependency graphs no longer omit inline foreign-key relationships between locally defined tables.
+- `REFERENCES` permission syntax does not create a false dependency target named `ON`.
+
+### Changed
+- Parser support now distinguishes DDL foreign-key evidence from permission syntax using same-statement `FOREIGN KEY` evidence.
+- Real-repository dogfooding continues to drive parser coverage after the `0.21.0` object-scoped architecture milestone.
+
+### Compatibility
+- Public AST fields and serialized schemas remain unchanged.
+- Dependency direction remains `source -> target`.
+- Standalone `ALTER TABLE ... FOREIGN KEY` source ownership is deliberately not approximated as a Script-sourced schema edge.
+
 ## 0.21.0 - 2026-08-08
 
 ### Added
