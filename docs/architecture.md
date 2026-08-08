@@ -36,6 +36,24 @@ src/sqlstudio
 
 The parser is dependency-oriented rather than a complete T-SQL compiler. It extracts supported schema objects, references and execution metadata from repository source files.
 
+### Object-scoped ownership
+
+A `SqlDocument` may contain multiple durable `SqlObject` definitions from the same source file. `ParserContext` keeps one active object scope and materializes it when a new durable definition starts, a standalone `GO` batch separator is reached, or the document ends.
+
+Each scope owns its own:
+
+- parameters;
+- variables;
+- references and calls;
+- temporary tables;
+- dynamic-SQL evidence.
+
+Those collections are reset between scopes. This prevents evidence from one stored procedure, view or table from leaking into another object defined in the same physical `.sql` file.
+
+Standalone `GO` is recognized only when it occupies its own source line. Guarded migration DDL such as `IF OBJECT_ID(...) ... CREATE TABLE ...` is supported when ownership can be established. Permanent runtime DDL inside an already active stored module is not promoted to a separate top-level durable repository definition.
+
+The public AST remains unchanged: `SqlDocument.objects` was already a collection and `SqlObject` already carried the required object-level evidence. `DependencyResolver` therefore continues consuming the same public models without a second graph implementation.
+
 The tokenizer preserves supported multipart identifiers as one logical token, including bracket-quoted segments such as `[OtherDb].[sales].[Order Header]`. Shared name normalization removes bracket syntax when materializing `SqlObject` and `Reference` fields.
 
 Reference extraction scans all resolvable relation clauses in a statement rather than stopping at the first `FROM`/`JOIN`. Representative support includes CTE bodies, derived tables, `MERGE ... USING`, alias-targeted `UPDATE`, `APPLY`, three-part names and transient temp/table-variable suppression. CTE aliases and transient objects are not durable dependency targets.
@@ -47,9 +65,9 @@ Reference extraction scans all resolvable relation clauses in a statement rather
 
 This guarantees that a local definition does not remain `Unknown` merely because another input file referenced it first. Reference-only external nodes remain `Unknown`.
 
-Dynamic execution through `EXEC(...)` or `sp_executesql` is flagged on the parsed SQL object so higher-level analyses can surface uncertainty. Dynamic SQL is not recursively promoted to guaranteed dependency evidence.
+Dynamic execution through `EXEC(...)` or `sp_executesql` is flagged on the owning parsed SQL object so higher-level analyses can surface uncertainty. Dynamic SQL is not recursively promoted to guaranteed dependency evidence.
 
-The supported parser boundary and known limitations are versioned in `docs/parser-support.md`. The current repository shape assumes one primary schema object per SQL-project style source file; multi-definition batches are not a guaranteed contract.
+The parser support contract is versioned in `docs/parser-support.md`; the ownership decision is frozen in `docs/object-scoped-parser.md`.
 
 ## 4. Dependency Engine
 
@@ -130,7 +148,7 @@ CLI exit codes remain:
 
 ## 11. Validation boundary
 
-The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite, exercises the representative complex-T-SQL corpus and repository wrapper, builds sdist/wheel, installs the wheel and executes `sqlstudio` from outside the checkout with `PYTHONPATH` cleared.
+The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite, exercises representative complex-T-SQL and object-scope corpora plus the repository wrapper, builds sdist/wheel, installs the wheel and executes `sqlstudio` from outside the checkout with `PYTHONPATH` cleared.
 
 A source-only green test suite is insufficient to validate packaging or parser distribution behavior.
 
@@ -144,6 +162,6 @@ A future profiler would introduce a live/runtime database boundary with credenti
 
 Performance tooling may only re-enter after satisfying the contract in `docs/performance-tooling-scope.md`. Future implementation must live under `src/sqlstudio/` and must not silently change the repository-only static-analysis boundary of existing analyzers.
 
-## 13. Deferred architecture
+## 13. Release boundary
 
-Publication/release automation remains a separate roadmap decision. Runtime profiler/benchmark tooling is explicitly post-MVP rather than an unfinished current subsystem.
+The current release channel is GitHub Releases only and remains separate from analysis semantics. PyPI publication and runtime profiler/benchmark tooling require separate explicit decisions.
