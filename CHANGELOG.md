@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.23.0 - 2026-08-08
+
+### Added
+- Real-repository procedure-signature regression coverage derived from PULSE export procedures.
+- Parameterized datatype coverage for `nvarchar(...)`, `decimal(...,...)` and `datetime2(...)` in both procedure and function signatures.
+- Case-insensitive regression coverage proving `SET @Parameter = ...` does not duplicate a parameter as a local variable.
+- `docs/real-repository-validation-pass-3.md` documenting the parameter-list boundary and variable-classification defects.
+
+### Fixed
+- Datatype closing parentheses no longer terminate an unparenthesized stored-procedure parameter list.
+- Commas inside datatype precision/scale syntax such as `decimal(18,4)` no longer split logical parameters.
+- Parenthesized function signatures with parameterized datatypes retain all parameters.
+- Procedure input-normalization assignments no longer pollute `SqlObject.variables` when the target is already a parameter.
+
+### Changed
+- Parameter parsing now tracks datatype nesting independently from the optional outer signature parentheses.
+- Parameter/local-variable separation is case-insensitive within the owning object scope.
+
+### Compatibility
+- Public `Parameter`, `Variable`, `SqlObject` and `SqlDocument` fields remain unchanged.
+- Parameter datatype metadata continues to expose the logical datatype identifier; this milestone fixes boundaries rather than changing the AST schema.
+- Dependency graph and downstream analysis semantics are unchanged.
+
 ## 0.22.0 - 2026-08-08
 
 ### Added
