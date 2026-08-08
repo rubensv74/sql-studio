@@ -1,0 +1,101 @@
+name: PULSE Release 0.26 Dogfood
+
+on:
+  push:
+    branches:
+      - "agent/dogfood-pulse-release-026"
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fixed PULSE corpus
+        uses: actions/checkout@v7
+        with:
+          repository: rubensv74/app_pulse
+          ref: 919ea5ed59c856469f873d9a766479fac3fa8391
+          path: pulse
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install released SQL Studio 0.26.0
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps \
+            https://github.com/rubensv74/sql-studio/releases/download/v0.26.0/sql_studio-0.26.0-py3-none-any.whl
+          test "$(sqlstudio --version)" = "sqlstudio 0.26.0"
+
+      - name: Analyze PULSE SQL repository
+        run: |
+          sqlstudio repository-analysis pulse/sql --recursive \
+            --output /tmp/pulse-repository-analysis-026.json \
+            --html /tmp/pulse-repository-analysis-026.html
+          test -s /tmp/pulse-repository-analysis-026.json
+          test -s /tmp/pulse-repository-analysis-026.html
+
+      - name: Assert released corrections
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/pulse-repository-analysis-026.json').read_text(encoding='utf-8'))
+          summary = payload['summary']
+          expected = {
+              'source_count': 5,
+              'parsed_object_count': 12,
+              'script_object_count': 3,
+              'graph_node_count': 34,
+              'dependency_edge_count': 32,
+              'finding_count': 5,
+          }
+          for key, value in expected.items():
+              actual = summary[key]
+              print(f'{key}={actual}')
+              assert actual == value, (key, actual, value)
+
+          foundations = next(
+              source for source in payload['sources']
+              if source['source_id'].endswith('sql/import/001_import_foundations.sql')
+          )
+          physical_scripts = [name for name in foundations['objects'] if name.startswith('script:')]
+          assert len(physical_scripts) == 1, foundations
+
+          unknown = {
+              node['name'] for node in payload['dependencies']['nodes']
+              if node['object_type'] == 'Unknown'
+          }
+          print(f'unknown_node_count={len(unknown)}')
+          assert len(unknown) == 22
+          assert 'eb' not in {name.casefold() for name in unknown}
+
+          findings = [
+              (finding['rule_id'], tuple(finding['objects']))
+              for finding in payload['findings']
+          ]
+          expected_findings = {
+              ('SQL002', ('warroom.ImportAudit',)),
+              ('SQL002', ('warroom.ImportBatchRow',)),
+              ('SQL002', ('warroom.usp_CompletePunchExportBatch',)),
+              ('SQL002', ('warroom.usp_ExportProjectPunchesExtended_Pivoted',)),
+              ('SQL002', ('warroom.usp_RegisterPunchExportSnapshot',)),
+          }
+          assert set(findings) == expected_findings, findings
+
+          print('PUBLIC_026_PULSE_DOGFOOD=passed')
+          PY
+
+      - name: Upload public-release dogfood report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-repository-analysis-v0.26.0
+          path: |
+            /tmp/pulse-repository-analysis-026.json
+            /tmp/pulse-repository-analysis-026.html
+          if-no-files-found: error
