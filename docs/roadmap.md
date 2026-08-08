@@ -6,6 +6,8 @@
 - SQL Parser with representative complex T-SQL regression corpus
 - Object-scoped multi-definition parser ownership — multiple durable objects per source with isolated evidence
 - DDL foreign-key dependency evidence for inline `FOREIGN KEY ... REFERENCES` constraints
+- Real SQL Server procedure/function parameter parsing across parameterized datatypes
+- Parameter/local-variable classification without `SET @Parameter` duplication
 - Dependency Engine
 - Cross Reference Engine
 - Impact Analysis Engine
@@ -19,10 +21,11 @@
 - Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 - GitHub-only release policy — successful `main` CI creates immutable SemVer tag + GitHub Release with wheel/sdist assets
-- Controlled GitHub Releases verified through `v0.21.0`
+- Controlled GitHub Releases verified through `v0.22.0`
 - Real-repository validation pass 1 — JSON rowset and temporary-object false positives corrected in `0.20.0`
 - Multi-definition architecture decision resolved in `0.21.0` through object-scoped evidence ownership
 - Real-repository validation pass 2 — inline foreign-key targets promoted to dependency edges in `0.22.0` without treating permission `REFERENCES` as schema dependencies
+- Real-repository validation pass 3 — parameterized datatype boundaries and parameter/local-variable classification corrected in `0.23.0`
 
 ## Next
 
@@ -39,11 +42,13 @@ The parser is dependency-oriented rather than a complete T-SQL compiler. Parser 
 
 A physical `.sql` source may contain multiple durable objects. Each object owns only its own parameters, variables, references, temporary tables and dynamic-SQL evidence. Ownership closes on a new durable definition, a standalone `GO` batch boundary or end of document.
 
+Procedure/function parameter parsing must distinguish optional outer signature parentheses from datatype parentheses. Datatype delimiters such as `nvarchar(320)`, `decimal(18,4)` and `datetime2(3)` must not terminate or split the logical parameter list. Assigning to an existing parameter with `SET` must not reclassify it as a local variable.
+
 Inline foreign keys are structural dependencies: the defining table is the source and the referenced table is the target. `REFERENCES` is not treated as a generic relation keyword; `FOREIGN KEY` evidence is required in the same statement so permission syntax does not create false edges.
 
 CTE aliases, temp tables and table variables must not become durable dependency nodes. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
-Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`. Real-repository evidence is recorded in `docs/real-repository-validation.md` and subsequent dogfooding milestones.
+Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`. Real-repository evidence is recorded in the `docs/real-repository-validation*.md` series.
 
 ## Repository hygiene gate
 
