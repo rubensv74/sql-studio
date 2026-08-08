@@ -65,6 +65,8 @@ jobs:
           python -c "import json; p=json.load(open('/tmp/complex-parse.json')); o=p['objects'][0]; assert o['name'] == 'Order Summary' and o['schema'] == 'reporting'; refs={(r['database'], r['schema'], r['name']) for r in o['references'] if r['kind']=='reference'}; assert refs == {('OtherDb','sales','Order Header'),(None,'crm','Customer Master'),(None,'audit','Order Flags')}"
           python cli/sqlstudio.py parse tests/fixtures/object_scopes/multi_modules.sql > /tmp/object-scopes.json
           python -c "import json; p=json.load(open('/tmp/object-scopes.json')); assert [o['name'] for o in p['objects']] == ['ProcA','ProcB']; a,b=p['objects']; assert a['dynamic_sql'] is True and b['dynamic_sql'] is False; assert {r['name'] for r in a['references']} >= {'SourceA','sp_executesql'}; assert {r['name'] for r in b['references']} >= {'SourceB','HelperB'}"
+          python cli/sqlstudio.py dependencies tests/fixtures/object_scopes/foreign_key_foundations.sql > /tmp/fk-dependencies.json
+          python -c "import json; p=json.load(open('/tmp/fk-dependencies.json')); edges={(e['source'],e['target']) for e in p['edges']}; assert ('warroom.ExportBatchRow','warroom.ExportBatch') in edges; assert ('warroom.ImportBatch','warroom.ExportBatch') in edges; assert not any(e['target'].casefold() == 'on' for e in p['edges'])"
           python cli/sqlstudio.py dependencies examples/sample_procedure.sql > /tmp/dependencies.json
           python cli/sqlstudio.py cross-references examples/sample_procedure.sql > /tmp/cross-references.json
           python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql > /tmp/impact.json
@@ -113,6 +115,8 @@ jobs:
           PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-complex-parse.json')); o=p['objects'][0]; assert o['name'] == 'Order Summary'; assert len([r for r in o['references'] if r['kind']=='reference']) == 3"
           PYTHONPATH= sqlstudio parse "$repo/tests/fixtures/object_scopes/multi_modules.sql" > /tmp/installed-object-scopes.json
           PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-object-scopes.json')); assert [o['name'] for o in p['objects']] == ['ProcA','ProcB']; assert p['objects'][0]['dynamic_sql'] is True; assert p['objects'][1]['dynamic_sql'] is False"
+          PYTHONPATH= sqlstudio dependencies "$repo/tests/fixtures/object_scopes/foreign_key_foundations.sql" > /tmp/installed-fk-dependencies.json
+          PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-fk-dependencies.json')); edges={(e['source'],e['target']) for e in p['edges']}; assert ('warroom.ExportBatchRow','warroom.ExportBatch') in edges; assert ('warroom.ImportBatch','warroom.ExportBatch') in edges"
           PYTHONPATH= sqlstudio analyze "$repo/examples/dead_objects" --entry-point dbo.Entry > /tmp/installed-rules.json
           PYTHONPATH= python -m json.tool /tmp/installed-rules.json > /dev/null
           PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-rules.json')); assert p['summary']['rule_count'] == 2; assert p['findings'][0]['rule_id'] == 'SQL002'"

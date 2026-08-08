@@ -61,6 +61,26 @@ class ReferenceStatementParser(StatementParser):
                 relation = self._relation_from_token(statement_tokens[relation_index], cte_names)
                 if relation is not None:
                     relations.append(relation)
+                continue
+
+            # FOREIGN KEY ... REFERENCES target is a durable DDL dependency.
+            # Do not treat REFERENCES as a relation keyword globally because
+            # permission syntax such as GRANT REFERENCES ON ... would otherwise
+            # create a false target named ON. Require FOREIGN KEY evidence in
+            # the same statement before collecting the referenced object.
+            if keyword == "REFERENCES" and self._has_foreign_key_before(
+                statement_tokens,
+                index,
+            ):
+                relation_index = self._relation_index(statement_tokens, index + 1)
+                if relation_index is None:
+                    continue
+                relation = self._relation_from_token(
+                    statement_tokens[relation_index],
+                    cte_names,
+                )
+                if relation is not None:
+                    relations.append(relation)
 
         # UPDATE frequently targets an alias declared later in a FROM clause.
         # Resolve aliases only after the first pass has seen every FROM/JOIN.
@@ -91,6 +111,22 @@ class ReferenceStatementParser(StatementParser):
                 database=relation.database,
             )
         return True
+
+    @staticmethod
+    def _has_foreign_key_before(tokens: Sequence[Token], before_index: int) -> bool:
+        """Return whether a FOREIGN KEY clause precedes REFERENCES in this statement."""
+
+        for index in range(before_index - 1):
+            first = tokens[index]
+            second = tokens[index + 1]
+            if (
+                first.kind == "identifier"
+                and second.kind == "identifier"
+                and first.value.upper() == "FOREIGN"
+                and second.value.upper() == "KEY"
+            ):
+                return True
+        return False
 
     def _relation_from_token(self, token: Token, cte_names: set[str]) -> _Relation | None:
         if token.kind != "identifier":

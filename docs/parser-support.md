@@ -4,7 +4,7 @@
 
 SQL Studio uses a lightweight static parser to discover SQL objects and dependency references. It is intentionally **not** a full T-SQL compiler or semantic engine.
 
-Version `0.21.0` promotes evidence ownership to an explicit parser contract: one source file may contain multiple durable SQL-object definitions, and each emitted `SqlObject` owns only the parameters, variables, references, temporary tables and dynamic-SQL evidence observed in its active scope.
+Version `0.22.0` extends the object-scoped parser contract with DDL dependency evidence from inline foreign keys observed during real-repository dogfooding. One source file may contain multiple durable SQL-object definitions, and each emitted `SqlObject` owns only the evidence observed in its active scope.
 
 ## Supported reference and definition patterns
 
@@ -13,6 +13,8 @@ The regression corpus covers and the parser is expected to preserve:
 - `CREATE` and `CREATE OR ALTER` for stored procedures, views, functions, triggers and tables;
 - multiple durable definitions in one `.sql` source when object/batch ownership can be established;
 - guarded durable DDL such as `IF OBJECT_ID(...) IS NULL BEGIN CREATE TABLE ... END`;
+- inline `FOREIGN KEY (...) REFERENCES schema.Table (...)` dependencies owned by the defining table;
+- permission syntax such as `GRANT REFERENCES ON ...` without false dependency emission;
 - standalone `GO` lines as client batch/object-scope boundaries;
 - stored-procedure parameters with or without surrounding parentheses;
 - multipart identifiers such as `dbo.TableA` and `OtherDb.sales.TableA`;
@@ -33,47 +35,49 @@ References are deduplicated case-insensitively **within each parsed object scope
 
 ## Object-scope ownership
 
-`SqlDocument.objects` may contain multiple durable objects from one source file. Parser evidence is no longer accumulated globally and then attached to the first object.
+`SqlDocument.objects` may contain multiple durable objects from one source file. Parser evidence is not accumulated globally and then attached to the first object.
 
-The active scope owns:
-
-- parameters;
-- variables;
-- references and calls;
-- temporary tables;
-- dynamic-SQL evidence.
-
-The scope is finalized when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends. Evidence collections are reset before the next scope begins.
+The active scope owns parameters, variables, references/calls, temporary tables and dynamic-SQL evidence. The scope is finalized when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends.
 
 See `docs/object-scoped-parser.md` for the architecture contract.
 
-## Identifier normalization
+## DDL foreign-key evidence
 
-Bracket quoting is syntax, not part of the logical object name. For example:
+A foreign-key target is a durable structural dependency:
 
 ```sql
-[OtherDb].[sales].[Order Header]
+CREATE TABLE warroom.Child
+(
+    ParentId bigint NOT NULL,
+    CONSTRAINT FK_Child_Parent
+        FOREIGN KEY (ParentId)
+        REFERENCES warroom.Parent (ParentId)
+);
 ```
 
-is represented as:
+SQL Studio records:
 
-- database: `OtherDb`
-- schema: `sales`
-- name: `Order Header`
+```text
+warroom.Child -> warroom.Parent
+```
 
-The public `Reference` model remains unchanged.
+The parser does **not** treat every occurrence of `REFERENCES` as an object relation. A `REFERENCES` target is collected only when `FOREIGN KEY` evidence exists earlier in the same statement. This avoids permission syntax such as `GRANT REFERENCES ON ...` becoming a false target named `ON`.
+
+This milestone guarantees inline foreign-key dependencies in object-owned DDL. Standalone `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` ownership requires reliable identification of the altered durable source object and is not silently approximated as a schema-object edge.
+
+## Identifier normalization
+
+Bracket quoting is syntax, not part of the logical object name. For example `[OtherDb].[sales].[Order Header]` is represented as database `OtherDb`, schema `sales`, name `Order Header`. The public `Reference` model remains unchanged.
 
 ## CTE and transient-object boundary
 
 CTE names, `#temp` / `##temp` tables and `@table` variables are local execution constructs. SQL Studio may record temporary-table presence on `SqlObject.temporary_tables`, but these names must not create durable dependency-graph nodes or targets.
 
-A utility script whose only `CREATE TABLE` statements are temporary remains a `Script`; the temporary table must not become a durable table object.
-
-References inside a CTE or derived table are still collected when their source objects are statically identifiable.
+A utility script whose only `CREATE TABLE` statements are temporary remains a `Script`; the temporary table must not become a durable table object. References inside a CTE or derived table are still collected when their source objects are statically identifiable.
 
 ## Built-in rowset boundary
 
-`OPENJSON`, `OPENQUERY` and `OPENROWSET` can syntactically appear after `FROM` / `JOIN`, but they are not local schema objects. SQL Studio therefore suppresses them as dependency targets while retaining durable relations around them.
+`OPENJSON`, `OPENQUERY` and `OPENROWSET` can syntactically appear after `FROM` / `JOIN`, but they are not local schema objects. SQL Studio suppresses them as dependency targets while retaining durable relations around them.
 
 The suppression list is evidence-driven. New built-in table-valued or rowset sources are added only when a reduced real-repository fixture demonstrates a false dependency.
 
@@ -87,6 +91,7 @@ The parser remains conservative and does not claim complete T-SQL grammar covera
 - `OPENQUERY`, `OPENROWSET` and `OPENJSON` are treated as external/runtime or built-in rowset boundaries rather than local schema-object dependencies.
 - Alias resolution is statement-local and evidence-based; SQL Studio does not perform full name binding or query optimization.
 - Permanent runtime DDL encountered inside an already active stored module is not promoted to a second top-level repository definition.
+- Standalone `ALTER TABLE` DDL is not yet promoted to a durable source-object scope.
 - Multi-definition support is guaranteed only where source structure provides reliable ownership boundaries; syntax that cannot be assigned to the correct object remains unsupported rather than being guessed.
 - Synonyms, linked-server semantics, generated SQL and runtime metadata require separate explicit support before they can be treated as complete dependency evidence.
 
@@ -96,7 +101,7 @@ Representative fixtures live under:
 
 - `tests/fixtures/tsql_complex/` — dependency-oriented complex T-SQL patterns;
 - `tests/fixtures/real_repository/` — reduced synthetic cases derived from real-repository failures;
-- `tests/fixtures/object_scopes/` — multi-definition, batch-boundary and evidence-ownership cases.
+- `tests/fixtures/object_scopes/` — multi-definition, batch-boundary, evidence-ownership and DDL foreign-key cases.
 
 Every fixture must represent dependency or ownership behavior rather than merely increasing syntax variety.
 
@@ -110,4 +115,4 @@ source -> target
 
 where source depends on target.
 
-Changes to the public AST, dependency direction or serialized schemas require separate versioned architecture decisions. Object-scoped ownership itself is frozen by the `0.21.0` architecture contract.
+Changes to the public AST, dependency direction or serialized schemas require separate versioned architecture decisions. Object-scoped ownership remains frozen by the `0.21.0` architecture contract.

@@ -5,6 +5,7 @@
 - Repository Engine
 - SQL Parser with representative complex T-SQL regression corpus
 - Object-scoped multi-definition parser ownership — multiple durable objects per source with isolated evidence
+- DDL foreign-key dependency evidence for inline `FOREIGN KEY ... REFERENCES` constraints
 - Dependency Engine
 - Cross Reference Engine
 - Impact Analysis Engine
@@ -18,17 +19,19 @@
 - Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 - GitHub-only release policy — successful `main` CI creates immutable SemVer tag + GitHub Release with wheel/sdist assets
-- Controlled GitHub Releases verified through `v0.20.0`
+- Controlled GitHub Releases verified through `v0.21.0`
 - Real-repository validation pass 1 — JSON rowset and temporary-object false positives corrected in `0.20.0`
 - Multi-definition architecture decision resolved in `0.21.0` through object-scoped evidence ownership
+- Real-repository validation pass 2 — inline foreign-key targets promoted to dependency edges in `0.22.0` without treating permission `REFERENCES` as schema dependencies
 
 ## Next
 
-1. Continue real-repository dogfooding against multi-definition migration and module files using the `0.21.0` ownership model
+1. Continue real-repository dogfooding against migration, module and schema-extraction SQL using the object-scoped ownership model
 2. Expand parser coverage only from concrete dependency/ownership failures
-3. Design the unified Repository Analysis Report after graph fidelity is validated on representative repositories
-4. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
-5. Revisit PyPI publication only through a separate explicit decision
+3. Evaluate standalone `ALTER TABLE ... FOREIGN KEY` source ownership only when a representative repository requires it; do not emit Script-sourced schema edges as a shortcut
+4. Design the unified Repository Analysis Report after graph fidelity is validated on representative repositories
+5. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
+6. Revisit PyPI publication only through a separate explicit decision
 
 ## Parser gates
 
@@ -36,9 +39,11 @@ The parser is dependency-oriented rather than a complete T-SQL compiler. Parser 
 
 A physical `.sql` source may contain multiple durable objects. Each object owns only its own parameters, variables, references, temporary tables and dynamic-SQL evidence. Ownership closes on a new durable definition, a standalone `GO` batch boundary or end of document.
 
+Inline foreign keys are structural dependencies: the defining table is the source and the referenced table is the target. `REFERENCES` is not treated as a generic relation keyword; `FOREIGN KEY` evidence is required in the same statement so permission syntax does not create false edges.
+
 CTE aliases, temp tables and table variables must not become durable dependency nodes. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
-Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`. Real-repository evidence is recorded in `docs/real-repository-validation.md`.
+Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`. Real-repository evidence is recorded in `docs/real-repository-validation.md` and subsequent dogfooding milestones.
 
 ## Repository hygiene gate
 
