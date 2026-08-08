@@ -74,6 +74,25 @@ class RepositoryAnalysisTests(unittest.TestCase):
         self.assertIn("script:sql/<dynamic>.sql", by_name)
         self.assertTrue(by_name["script:sql/<dynamic>.sql"].dynamic_sql)
 
+    def test_one_physical_source_has_at_most_one_fallback_script_record(self) -> None:
+        source = SqlSource(
+            "sql/import/foundations.sql",
+            "SELECT * FROM dbo.Before; GO\n"
+            "CREATE TABLE dbo.Local (Id int); GO\n"
+            "SELECT * FROM dbo.After;",
+        )
+        result = RepositoryAnalysisEngine().analyze((source,))
+        script_records = [item for item in result.objects if item.object_type == "Script"]
+        source_record = result.sources[0]
+
+        self.assertEqual(len(script_records), 1)
+        self.assertEqual(script_records[0].name, "script:sql/import/foundations.sql")
+        self.assertEqual(
+            source_record.objects.count("script:sql/import/foundations.sql"),
+            1,
+        )
+        self.assertEqual(result.parsed_object_count, len({item.name for item in result.objects}))
+
     def test_cycles_dead_candidates_and_rules_share_the_same_graph(self) -> None:
         result = RepositoryAnalysisEngine().analyze(self.sources)
 
