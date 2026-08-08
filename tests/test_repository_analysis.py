@@ -77,9 +77,11 @@ class RepositoryAnalysisTests(unittest.TestCase):
     def test_one_physical_source_has_at_most_one_fallback_script_record(self) -> None:
         source = SqlSource(
             "sql/import/foundations.sql",
-            "SELECT * FROM dbo.Before; GO\n"
-            "CREATE TABLE dbo.Local (Id int); GO\n"
-            "SELECT * FROM dbo.After;",
+            "SELECT * FROM dbo.Before;\n"
+            "GO\n"
+            "CREATE TABLE dbo.Local (Id int);\n"
+            "GO\n"
+            "SELECT * FROM dbo.After;\n",
         )
         result = RepositoryAnalysisEngine().analyze((source,))
         script_records = [item for item in result.objects if item.object_type == "Script"]
