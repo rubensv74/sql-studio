@@ -16,12 +16,14 @@
 - Repository hygiene, full MIT license and documentation alignment
 - Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
+- GitHub-only release policy — successful `main` CI creates immutable SemVer tag + GitHub Release with wheel/sdist assets
 
 ## Next
 
-1. Define release/tag/PyPI publication policy
-2. Evaluate `main` branch protection before the first tagged release
+1. Protect `main` using the documented CI-gated branch policy
+2. Verify first controlled GitHub Release `v0.19.0`
 3. Expand the representative parser corpus when concrete repository syntax exposes a missing dependency pattern
+4. Revisit PyPI publication only through a separate explicit decision
 
 ## Parser gates
 
@@ -53,7 +55,19 @@ The canonical CLI lives inside the installable package. The repository wrapper r
 
 A packaging milestone is green only if CI builds sdist/wheel and proves the installed `sqlstudio` command works outside the repository with `PYTHONPATH` cleared.
 
-Publication to PyPI is not implied by installability and requires a separate release decision.
+PyPI publication is not implied by installability or by a GitHub Release.
+
+## Release gates
+
+The current release channel is GitHub Releases only, as defined in `docs/release-policy.md`.
+
+A stable release may be created only after the `CI` workflow succeeds on `main`. The release workflow checks out the exact validated commit, validates the canonical package version and compatibility mirror, enforces immutable `vMAJOR.MINOR.PATCH` tag identity, builds the wheel/sdist and creates the GitHub Release when it does not already exist.
+
+The release workflow must not contain PyPI upload credentials or publication steps. PyPI requires a later explicit product decision.
+
+## Branch-protection gate
+
+`main` should require the `test` CI job, pull-request integration, conversation resolution, up-to-date branches, and blocking of force pushes/deletion. The reproducible target configuration is defined in `docs/branch-protection.md`.
 
 ## Performance tooling gate
 

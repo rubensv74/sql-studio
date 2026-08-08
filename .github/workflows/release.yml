@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  github-release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout validated main commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Resolve and validate release identity
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(PYTHONPATH=src python -c "import sqlstudio; print(sqlstudio.__version__)")
+          mirror=$(tr -d '[:space:]' < core/version.txt)
+          sha="${{ github.event.workflow_run.head_sha }}"
+          tag="v${version}"
+
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Invalid release version::Expected stable SemVer X.Y.Z, got '${version}'."
+            exit 1
+          fi
+          if [ "$mirror" != "$version" ]; then
+            echo "::error title=Version mismatch::core/version.txt=${mirror}, package=${version}."
+            exit 1
+          fi
+
+          git fetch --tags --force
+          tag_sha=$(git rev-list -n 1 "$tag" 2>/dev/null || true)
+          if [ -n "$tag_sha" ] && [ "$tag_sha" != "$sha" ]; then
+            echo "::error title=Immutable tag conflict::${tag} already points to ${tag_sha}, expected ${sha}."
+            exit 1
+          fi
+
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            exists=true
+          else
+            exists=false
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
+      - name: Build release distributions
+        if: steps.release.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.release.outputs.version }}"
+          python -m pip install --disable-pip-version-check --quiet build
+          python -m build
+          test -f "dist/sql_studio-${version}-py3-none-any.whl"
+          test -f "dist/sql_studio-${version}.tar.gz"
+
+      - name: Create GitHub Release
+        if: steps.release.outputs.exists != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+          sha="${{ steps.release.outputs.sha }}"
+          gh release create "$tag" dist/* \
+            --repo "${{ github.repository }}" \
+            --target "$sha" \
+            --title "SQL Studio ${tag}" \
+            --generate-notes \
+            --latest
+
+      - name: Verify GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ steps.release.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --json tagName,targetCommitish,isDraft,isPrerelease,url,assets
