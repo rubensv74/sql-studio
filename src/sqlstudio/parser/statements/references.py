@@ -34,6 +34,7 @@ class ReferenceStatementParser(StatementParser):
 
         cte_names = self._collect_cte_names(statement_tokens)
         aliases: dict[str, _Relation] = {}
+        transient_aliases: set[str] = set()
         relations: list[_Relation] = []
 
         for index, token in enumerate(statement_tokens):
@@ -45,11 +46,14 @@ class ReferenceStatementParser(StatementParser):
                 relation_index = self._relation_index(statement_tokens, index + 1)
                 if relation_index is None:
                     continue
-                relation = self._relation_from_token(statement_tokens[relation_index], cte_names)
+                relation_token = statement_tokens[relation_index]
+                relation = self._relation_from_token(relation_token, cte_names)
+                alias = self._relation_alias(statement_tokens, relation_index + 1)
                 if relation is None:
+                    if alias is not None and self._is_transient_source(relation_token, cte_names):
+                        transient_aliases.add(normalize_identifier(alias))
                     continue
                 relations.append(relation)
-                alias = self._relation_alias(statement_tokens, relation_index + 1)
                 if alias is not None:
                     aliases[normalize_identifier(alias)] = relation
                 continue
@@ -84,6 +88,9 @@ class ReferenceStatementParser(StatementParser):
 
         # UPDATE frequently targets an alias declared later in a FROM clause.
         # Resolve aliases only after the first pass has seen every FROM/JOIN.
+        # If the alias belongs to a CTE/temp/table-variable/built-in rowset,
+        # suppress the UPDATE target rather than falling back to a false durable
+        # object whose name is merely the alias.
         # MERGE action clauses use ``UPDATE SET`` without a separate target;
         # SET is therefore a boundary, not an object name.
         for index, token in enumerate(statement_tokens):
@@ -95,9 +102,12 @@ class ReferenceStatementParser(StatementParser):
             target = statement_tokens[target_index]
             if target.value.upper() == "SET":
                 continue
-            alias_relation = aliases.get(normalize_identifier(target.value))
+            normalized_target = normalize_identifier(target.value)
+            alias_relation = aliases.get(normalized_target)
             if alias_relation is not None:
                 relations.append(alias_relation)
+                continue
+            if normalized_target in transient_aliases:
                 continue
             relation = self._relation_from_token(target, cte_names)
             if relation is not None:
@@ -140,6 +150,16 @@ class ReferenceStatementParser(StatementParser):
         if name is None or name.startswith(("#", "@")):
             return None
         return _Relation(name=name, schema=schema, database=database)
+
+    def _is_transient_source(self, token: Token, cte_names: set[str]) -> bool:
+        if token.kind != "identifier":
+            return False
+        normalized = normalize_identifier(token.value)
+        if normalized in cte_names:
+            return True
+        if normalized in {name.casefold() for name in self._NON_OBJECT_SOURCES}:
+            return True
+        return token.value.startswith(("#", "@"))
 
     @staticmethod
     def _relation_index(
