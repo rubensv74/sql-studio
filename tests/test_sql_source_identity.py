@@ -11,6 +11,9 @@ from sqlstudio import DependencyAnalyzer, SQLParser, SqlSource
 from sqlstudio.cli import analyze_dependencies
 
 
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "real_repository"
+
+
 class SqlSourceIdentityTests(unittest.TestCase):
     def test_source_id_is_slash_normalized(self) -> None:
         source = SqlSource(r".\sql\import\seed.sql", "SELECT 1;")
@@ -39,6 +42,24 @@ class SqlSourceIdentityTests(unittest.TestCase):
         self.assertEqual(durable.objects[0].name, "Report")
         self.assertEqual(durable.objects[0].schema, "dbo")
         self.assertEqual(durable.objects[0].object_type, "View")
+
+    def test_source_parser_consolidates_fallback_scopes_into_one_physical_script(self) -> None:
+        sql = (FIXTURES / "multi_scope_physical_script.sql").read_text(encoding="utf-8")
+        document = SQLParser().parse_source(
+            SqlSource("sql/import/foundations.sql", sql)
+        )
+
+        scripts = [item for item in document.objects if item.object_type == "Script"]
+        durable = [item for item in document.objects if item.object_type != "Script"]
+
+        self.assertEqual(len(scripts), 1)
+        self.assertEqual(scripts[0].name, "script:sql/import/foundations.sql")
+        self.assertEqual([(item.schema, item.name) for item in durable], [("dbo", "LocalTable")])
+        self.assertEqual(
+            {(reference.schema, reference.name) for reference in scripts[0].references},
+            {(None, "sp_executesql"), ("dbo", "AfterTarget"), ("dbo", "BeforeTarget")},
+        )
+        self.assertTrue(scripts[0].dynamic_sql)
 
     def test_two_physical_scripts_do_not_collapse_in_dependency_graph(self) -> None:
         graph = DependencyAnalyzer().analyze_sources(

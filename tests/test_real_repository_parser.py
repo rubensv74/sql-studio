@@ -45,6 +45,21 @@ class RealRepositoryParserTests(unittest.TestCase):
             },
         )
 
+    def test_update_alias_of_temp_table_is_not_a_durable_dependency(self) -> None:
+        sql = (FIXTURES / "update_temp_alias.sql").read_text(encoding="utf-8")
+        document = SQLParser().parse(sql)
+        obj = document.objects[0]
+        references = {
+            (reference.database, reference.schema, reference.name)
+            for reference in obj.references
+            if reference.kind == "reference"
+        }
+
+        self.assertEqual((obj.schema, obj.name), ("warroom", "usp_UpdateSnapshot"))
+        self.assertIn("#ExportBase", obj.temporary_tables)
+        self.assertEqual(references, {(None, "dbo", "SourceRows")})
+        self.assertNotIn((None, None, "eb"), references)
+
 
 if __name__ == "__main__":
     unittest.main()

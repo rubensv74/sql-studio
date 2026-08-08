@@ -2,19 +2,21 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.25.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, source-aware repository analysis and a unified versioned Repository Analysis result with JSON + self-contained HTML output. PyPI publication remains explicitly deferred.
+**Current version:** `0.26.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, source-aware repository analysis and a unified versioned Repository Analysis result with JSON + self-contained HTML output. Real PULSE dogfooding now validates physical Script aggregation and transient alias suppression. PyPI publication remains explicitly deferred.
 
 ## Implemented capabilities
 
 - repository scanning and JSON repository model;
 - `SqlSource` physical-source identity for repository/file analysis;
+- at most one fallback physical `Script` identity per `SqlSource`, even when internal ownership spans multiple batches;
 - T-SQL tokenization and dependency-oriented parsing;
 - multiple durable SQL objects per `.sql` source with isolated object-scoped evidence;
 - SQL object, parameter, variable and reference extraction;
 - SQL Server procedure/function parameters with parameterized datatypes, defaults and `OUTPUT` markers;
 - inline `FOREIGN KEY ... REFERENCES` dependency extraction;
 - bracketed/multipart identifier normalization, CTE/temp suppression and multi-reference extraction;
+- durable alias-targeted `UPDATE` resolution plus suppression of aliases bound to transient sources;
 - standalone `GO` batch-boundary handling;
 - guarded migration DDL discovery;
 - transient `CREATE TABLE #temp` handling without durable graph pollution;
@@ -48,7 +50,7 @@ SQL Studio is installable and GitHub Releases attach wheel and sdist artifacts. 
 
 ## Unified Repository Analysis
 
-`0.25.0` adds the product-level analysis command:
+`0.25.0` introduced the product-level analysis command:
 
 ```bash
 sqlstudio repository-analysis sql/ --recursive
@@ -73,7 +75,9 @@ sqlstudio repository-analysis sql/ --recursive \
   --html reports/repository-analysis.html
 ```
 
-`RepositoryAnalysisResult` is the canonical Python result. `RepositoryAnalysisSerializer` owns new JSON schema `1.0`; existing Dependency, Impact, Circular, Dead Object and Rule Engine schemas remain unchanged.
+`RepositoryAnalysisResult` is the canonical Python result. `RepositoryAnalysisSerializer` owns JSON schema `1.0`; existing Dependency, Impact, Circular, Dead Object and Rule Engine schemas remain unchanged.
+
+Real PULSE validation of the published `0.25.0` release exposed two fidelity defects that `0.26.0` corrects without changing that schema: duplicate physical Script rows from one multi-batch source, and a false `Unknown` alias node produced by `UPDATE eb ... FROM #ExportBase eb`. See [Real Repository Validation — Pass 4](docs/real-repository-validation-pass-4.md).
 
 See [Unified Repository Analysis](docs/unified-repository-analysis.md) and [CLI](docs/CLI.md).
 
@@ -108,21 +112,21 @@ source = SqlSource(
 )
 ```
 
-Source-aware parsing maps only fallback script scopes to:
+Source-aware parsing maps fallback script evidence to:
 
 ```text
 script:sql/import/003_seed_import_columns_v3.sql
 ```
 
-A durable object such as `dbo.Report` keeps its SQL identity even when parsed through `SqlSource`.
+If object-scoped parsing creates several fallback Script scopes inside the same physical file, `parse_source()` aggregates them into **one** `script:<source_id>` object. Durable definitions remain independent and keep their SQL identities.
 
-All repository-facing analyzers expose `analyze_source()` / `analyze_sources()`. Existing raw-text `parse()`, `analyze()` and `analyze_many()` methods remain compatible. The CLI uses the source-aware path so independent physical scripts do not collapse into one graph node.
+All repository-facing analyzers expose source-aware paths. Existing raw-text `parse()`, `analyze()` and `analyze_many()` methods remain compatible. The CLI uses the source-aware path so independent physical scripts do not collapse into one graph node and one physical file does not appear multiple times as the same Script identity.
 
 See [SQL Source Identity](docs/sql-source-identity.md).
 
 ## Parser boundary
 
-The parser is dependency-oriented, not a full T-SQL compiler. The regression corpus covers multipart/bracketed names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition files, inline foreign keys, real procedure signatures and escaped string literals.
+The parser is dependency-oriented, not a full T-SQL compiler. The regression corpus covers multipart/bracketed names, multiple joins, CTEs, derived tables, `MERGE`, alias-targeted `UPDATE`, transient alias suppression, temporary-object suppression, JSON rowsets, guarded migration DDL, multi-definition files, inline foreign keys, real procedure signatures and escaped string literals.
 
 One physical source may define several durable objects. Each object owns only its own parameters, variables, references/calls, temporary tables and dynamic-SQL evidence. Dynamic SQL and runtime/external constructs remain uncertainty boundaries.
 
@@ -173,6 +177,8 @@ python -m build
 
 GitHub Actions validates Python 3.12, compilation, imports, the full test suite, source-aware script identity, unified repository-analysis JSON/HTML, representative parser fixtures, legacy wrapper smoke paths, wheel/sdist construction and execution of the installed `sqlstudio` command outside the repository checkout.
 
+Real-repository dogfooding is recorded as evidence rather than silently converted into parser features. Pass 4 compares the published `0.25.0` wheel and the corrected branch against the same fixed PULSE commit.
+
 ## Release policy
 
 SQL Studio uses controlled **GitHub Releases only**. Successful `main` CI triggers the release workflow, which validates version identity, builds wheel/sdist artifacts and creates the SemVer release when it does not already exist. PyPI publication is explicitly excluded.
@@ -191,6 +197,7 @@ See [Release Policy](docs/release-policy.md) and [Main Branch Protection](docs/b
 - [Real Repository Validation — Pass 1](docs/real-repository-validation.md)
 - [Real Repository Validation — Pass 2](docs/real-repository-validation-pass-2.md)
 - [Real Repository Validation — Pass 3](docs/real-repository-validation-pass-3.md)
+- [Real Repository Validation — Pass 4](docs/real-repository-validation-pass-4.md)
 - [Handoff Repository Layout](docs/handoff-layout.md)
 - [Performance Tooling Scope Decision](docs/performance-tooling-scope.md)
 - [Static-analysis Rule Engine contract](docs/static-analysis-rule-engine.md)
