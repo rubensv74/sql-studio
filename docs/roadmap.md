@@ -6,9 +6,11 @@
 - SQL Parser with representative complex T-SQL regression corpus
 - Object-scoped multi-definition parser ownership — multiple durable objects per source with isolated evidence
 - Physical SQL source identity — source-aware repository analysis prevents independent scripts collapsing into `UnnamedScript`
+- One physical fallback Script identity per `SqlSource`, even when internal Script ownership spans multiple batches
 - DDL foreign-key dependency evidence for inline `FOREIGN KEY ... REFERENCES` constraints
 - Real SQL Server procedure/function parameter parsing across parameterized datatypes
 - Parameter/local-variable classification without `SET @Parameter` duplication
+- Transient UPDATE-alias suppression for temp tables, table variables, CTEs and built-in rowsets
 - Dependency Engine
 - Cross Reference Engine
 - Impact Analysis Engine
@@ -30,15 +32,17 @@
 - Real-repository validation pass 3 — parameterized datatype boundaries and parameter/local-variable classification corrected in `0.23.0`
 - Physical-source identity decision resolved in `0.24.0` through `SqlSource` while preserving the public SQL AST
 - Unified repository-analysis architecture resolved in `0.25.0` through `RepositoryAnalysisResult` while preserving all specialized schemas
+- Real-repository validation pass 4 — published `0.25.0` dogfooded against fixed PULSE SQL; duplicate physical Script records and false transient alias `eb` corrected in `0.26.0`
 
 ## Next
 
-1. Dogfood the unified Repository Analysis against representative real repositories and review report usefulness, not only parser fidelity
-2. Expand parser coverage only from concrete dependency/ownership failures found during that dogfooding
-3. Evaluate standalone `ALTER TABLE ... FOREIGN KEY` source ownership only when representative repository evidence requires it; do not emit Script-sourced schema edges as a shortcut
-4. Evaluate the next product surface (for example richer navigation or a GUI) only after the `0.25.0` report contract has proven stable
-5. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
-6. Revisit PyPI publication only through a separate explicit decision
+1. Re-run PULSE dogfooding against the published `0.26.0` release and retain the comparison evidence
+2. Dogfood Unified Repository Analysis against another representative SQL repository with materially different source shapes
+3. Expand parser coverage only from concrete dependency/ownership failures found during that dogfooding
+4. Evaluate standalone `ALTER TABLE ... FOREIGN KEY` source ownership only when representative repository evidence requires it; do not emit Script-sourced schema edges as a shortcut
+5. Evaluate the next product surface (richer navigation or GUI) only after the repository-report contract has proven useful across more than one real corpus
+6. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
+7. Revisit PyPI publication only through a separate explicit decision
 
 ## Unified repository-analysis gate
 
@@ -50,15 +54,17 @@ Repository Analysis JSON owns independent schema `1.0`. Existing Dependency, Imp
 
 The report preserves source/object provenance through the `SqlSource` + parsed-document pairing. No source field is added to `SqlDocument`, `SqlObject` or `Reference`.
 
+The source/object inventory must contain at most one fallback `script:<source_id>` identity per physical source. Internal parser Script scopes are implementation ownership details and must not inflate repository-level object counts.
+
 The HTML report is self-contained and includes executive summary, source inventory, dependency overview, key objects, cycles, dead candidates, normalized findings, dynamic-SQL uncertainty, object explorer and source traceability. See `docs/unified-repository-analysis.md`.
 
 ## Source identity gate
 
-Repository/file analysis must preserve physical identity until durable SQL ownership has been established. `SqlSource.source_id` is the canonical physical-source identifier and source-aware analysis uses `script:<source_id>` only for fallback Script scopes.
+Repository/file analysis must preserve physical identity until durable SQL ownership has been established. `SqlSource.source_id` is the canonical physical-source identifier and source-aware analysis uses `script:<source_id>` only for fallback Script evidence.
 
 Durable schema objects keep their normal SQL identity. `SqlDocument`, `SqlObject`, `Reference` and existing serialized schemas do not gain source-path fields.
 
-Raw-text `parse()` / `analyze_many()` methods remain compatibility surfaces. CLI file/directory analysis and source-aware analyzer APIs use `SqlSource`. See `docs/sql-source-identity.md`.
+Raw-text `parse()` / `analyze_many()` methods remain compatibility surfaces. CLI file/directory analysis and source-aware analyzer APIs use `SqlSource`. Source-aware parsing aggregates multiple internal fallback Script scopes from one file into one physical Script identity. See `docs/sql-source-identity.md`.
 
 ## Parser gates
 
@@ -70,7 +76,7 @@ Procedure/function parameter parsing must distinguish optional outer signature p
 
 Inline foreign keys are structural dependencies: the defining table is the source and the referenced table is the target. `REFERENCES` is not treated as a generic relation keyword; `FOREIGN KEY` evidence is required in the same statement so permission syntax does not create false edges.
 
-CTE aliases, temp tables and table variables must not become durable dependency nodes. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
+CTE aliases, temp tables and table variables must not become durable dependency nodes. Aliases bound to those transient sources must not become fallback Unknown targets during alias-targeted `UPDATE`. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
 Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`; physical source identity is frozen in `docs/sql-source-identity.md`. Real-repository evidence is recorded in the `docs/real-repository-validation*.md` series.
 
