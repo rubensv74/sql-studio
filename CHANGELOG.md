@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.0 - 2026-08-08
+
+### Added
+- Representative complex T-SQL regression corpus covering bracketed/multipart names, CTEs, multiple joins, derived tables, `MERGE`, alias-targeted `UPDATE` and transient temp-table behavior.
+- Shared multipart-name normalization for parser creation, execution and relation-reference paths.
+- Formal `docs/parser-support.md` contract documenting supported dependency-oriented syntax and known parser boundaries.
+
+### Fixed
+- Relation parsing now collects all resolvable references in one statement instead of stopping after the first relation keyword.
+- Bracket-quoted multipart identifiers are tokenized as one logical identifier and normalized into database/schema/name fields.
+- CTE aliases, temp tables and table variables no longer become durable dependency targets in the hardened relation scanner.
+- `MERGE ... WHEN MATCHED THEN UPDATE SET` no longer emits a false dependency named `SET`.
+- `UPDATE alias ... FROM schema.Table AS alias` resolves the alias to the real table when statement-local evidence exists.
+- SQL string tokenization now respects doubled quote escaping.
+- Duplicate references within one parsed source object are suppressed case-insensitively.
+
+### Changed
+- Parser scope is explicitly dependency-oriented, not a claim of full T-SQL grammar support.
+- Roadmap advances to `handoff/` versus `handoffs/` repository hygiene.
+
 ## 0.17.0 - 2026-08-08
 
 ### Added

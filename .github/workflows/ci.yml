@@ -61,6 +61,8 @@ jobs:
           python cli/sqlstudio.py --version
           python cli/sqlstudio.py --help
           python cli/sqlstudio.py parse examples/sample_procedure.sql > /tmp/parse.json
+          python cli/sqlstudio.py parse tests/fixtures/tsql_complex/complex_view.sql > /tmp/complex-parse.json
+          python -c "import json; p=json.load(open('/tmp/complex-parse.json')); o=p['objects'][0]; assert o['name'] == 'Order Summary' and o['schema'] == 'reporting'; refs={(r['database'], r['schema'], r['name']) for r in o['references'] if r['kind']=='reference'}; assert refs == {('OtherDb','sales','Order Header'),(None,'crm','Customer Master'),(None,'audit','Order Flags')}"
           python cli/sqlstudio.py dependencies examples/sample_procedure.sql > /tmp/dependencies.json
           python cli/sqlstudio.py cross-references examples/sample_procedure.sql > /tmp/cross-references.json
           python cli/sqlstudio.py impact sys.objects examples/sample_procedure.sql > /tmp/impact.json
@@ -105,6 +107,8 @@ jobs:
           actual_version=$(PYTHONPATH= sqlstudio --version)
           test "$actual_version" = "sqlstudio ${expected_version}"
           EXPECTED_VERSION="$expected_version" PYTHONPATH= python -c "import importlib.metadata as m, os, sqlstudio; expected=os.environ['EXPECTED_VERSION']; assert sqlstudio.__version__ == expected; assert m.version('sql-studio') == expected; assert '/src/sqlstudio/' not in sqlstudio.__file__.replace('\\\\', '/')"
+          PYTHONPATH= sqlstudio parse "$repo/tests/fixtures/tsql_complex/complex_view.sql" > /tmp/installed-complex-parse.json
+          PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-complex-parse.json')); o=p['objects'][0]; assert o['name'] == 'Order Summary'; assert len([r for r in o['references'] if r['kind']=='reference']) == 3"
           PYTHONPATH= sqlstudio analyze "$repo/examples/dead_objects" --entry-point dbo.Entry > /tmp/installed-rules.json
           PYTHONPATH= python -m json.tool /tmp/installed-rules.json > /dev/null
           PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-rules.json')); assert p['summary']['rule_count'] == 2; assert p['findings'][0]['rule_id'] == 'SQL002'"

@@ -34,14 +34,22 @@ src/sqlstudio
 
 ## 3. Parser and definition metadata
 
-The parser extracts supported schema objects, references and execution metadata. `DependencyResolver` resolves documents in two passes:
+The parser is dependency-oriented rather than a complete T-SQL compiler. It extracts supported schema objects, references and execution metadata from repository source files.
+
+The tokenizer preserves supported multipart identifiers as one logical token, including bracket-quoted segments such as `[OtherDb].[sales].[Order Header]`. Shared name normalization removes bracket syntax when materializing `SqlObject` and `Reference` fields.
+
+Reference extraction scans all resolvable relation clauses in a statement rather than stopping at the first `FROM`/`JOIN`. Representative support includes CTE bodies, derived tables, `MERGE ... USING`, alias-targeted `UPDATE`, `APPLY`, three-part names and transient temp/table-variable suppression. CTE aliases and transient objects are not durable dependency targets.
+
+`DependencyResolver` resolves documents in two passes:
 
 1. register every locally defined object and its real `object_type`;
 2. resolve references and dependency edges.
 
 This guarantees that a local definition does not remain `Unknown` merely because another input file referenced it first. Reference-only external nodes remain `Unknown`.
 
-Dynamic execution through `EXEC(...)` or `sp_executesql` is flagged on the parsed SQL object so higher-level analyses can surface uncertainty.
+Dynamic execution through `EXEC(...)` or `sp_executesql` is flagged on the parsed SQL object so higher-level analyses can surface uncertainty. Dynamic SQL is not recursively promoted to guaranteed dependency evidence.
+
+The supported parser boundary and known limitations are versioned in `docs/parser-support.md`. The current repository shape assumes one primary schema object per SQL-project style source file; multi-definition batches are not a guaranteed contract.
 
 ## 4. Dependency Engine
 
@@ -122,9 +130,9 @@ CLI exit codes remain:
 
 ## 11. Validation boundary
 
-The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite, exercises the repository wrapper, builds sdist/wheel, installs the wheel and executes `sqlstudio` from outside the checkout with `PYTHONPATH` cleared.
+The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite, exercises the representative complex-T-SQL corpus and repository wrapper, builds sdist/wheel, installs the wheel and executes `sqlstudio` from outside the checkout with `PYTHONPATH` cleared.
 
-A source-only green test suite is insufficient to validate packaging.
+A source-only green test suite is insufficient to validate packaging or parser distribution behavior.
 
 ## 12. Performance tooling boundary
 

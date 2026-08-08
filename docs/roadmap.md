@@ -3,7 +3,7 @@
 ## Stabilized MVP static-analysis core
 
 - Repository Engine
-- SQL Parser
+- SQL Parser with representative complex T-SQL regression corpus
 - Dependency Engine
 - Cross Reference Engine
 - Impact Analysis Engine
@@ -18,10 +18,18 @@
 
 ## Next
 
-1. Harden the parser against a representative complex T-SQL fixture corpus
-2. Resolve repository hygiene around `handoff/` versus `handoffs/`
-3. Define release/tag/PyPI publication policy
-4. Evaluate `main` branch protection before the first tagged release
+1. Resolve repository hygiene around `handoff/` versus `handoffs/`
+2. Define release/tag/PyPI publication policy
+3. Evaluate `main` branch protection before the first tagged release
+4. Expand the representative parser corpus when concrete repository syntax exposes a missing dependency pattern
+
+## Parser gates
+
+The parser is dependency-oriented rather than a complete T-SQL compiler. Parser changes must be driven by reduced reproducible fixtures and preserve the public AST unless a separate versioned decision is made.
+
+CTE aliases, temp tables and table variables must not become durable dependency nodes. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
+
+Current support and limitations are frozen in `docs/parser-support.md`.
 
 ## Static-analysis gates
 
