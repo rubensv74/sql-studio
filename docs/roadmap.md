@@ -5,6 +5,7 @@
 - Repository Engine
 - SQL Parser with representative complex T-SQL regression corpus
 - Object-scoped multi-definition parser ownership — multiple durable objects per source with isolated evidence
+- Physical SQL source identity — source-aware repository analysis prevents independent scripts collapsing into `UnnamedScript`
 - DDL foreign-key dependency evidence for inline `FOREIGN KEY ... REFERENCES` constraints
 - Real SQL Server procedure/function parameter parsing across parameterized datatypes
 - Parameter/local-variable classification without `SET @Parameter` duplication
@@ -21,20 +22,29 @@
 - Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 - GitHub-only release policy — successful `main` CI creates immutable SemVer tag + GitHub Release with wheel/sdist assets
-- Controlled GitHub Releases verified through `v0.22.0`
+- Controlled GitHub Releases verified through `v0.23.0`
 - Real-repository validation pass 1 — JSON rowset and temporary-object false positives corrected in `0.20.0`
 - Multi-definition architecture decision resolved in `0.21.0` through object-scoped evidence ownership
 - Real-repository validation pass 2 — inline foreign-key targets promoted to dependency edges in `0.22.0` without treating permission `REFERENCES` as schema dependencies
 - Real-repository validation pass 3 — parameterized datatype boundaries and parameter/local-variable classification corrected in `0.23.0`
+- Physical-source identity decision resolved in `0.24.0` through `SqlSource` while preserving the public SQL AST
 
 ## Next
 
-1. Continue real-repository dogfooding against migration, module and schema-extraction SQL using the object-scoped ownership model
+1. Continue real-repository dogfooding using source-aware repository analysis
 2. Expand parser coverage only from concrete dependency/ownership failures
 3. Evaluate standalone `ALTER TABLE ... FOREIGN KEY` source ownership only when a representative repository requires it; do not emit Script-sourced schema edges as a shortcut
 4. Design the unified Repository Analysis Report after graph fidelity is validated on representative repositories
 5. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
 6. Revisit PyPI publication only through a separate explicit decision
+
+## Source identity gate
+
+Repository/file analysis must preserve physical identity until durable SQL ownership has been established. `SqlSource.source_id` is the canonical physical-source identifier and source-aware analysis uses `script:<source_id>` only for fallback Script scopes.
+
+Durable schema objects keep their normal SQL identity. `SqlDocument`, `SqlObject`, `Reference` and existing serialized schemas do not gain source-path fields in `0.24.0`.
+
+Raw-text `parse()` / `analyze_many()` methods remain compatibility surfaces. CLI file/directory analysis and new `analyze_source(s)` APIs are source-aware. See `docs/sql-source-identity.md`.
 
 ## Parser gates
 
@@ -48,7 +58,7 @@ Inline foreign keys are structural dependencies: the defining table is the sourc
 
 CTE aliases, temp tables and table variables must not become durable dependency nodes. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
-Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`. Real-repository evidence is recorded in the `docs/real-repository-validation*.md` series.
+Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`; physical source identity is frozen in `docs/sql-source-identity.md`. Real-repository evidence is recorded in the `docs/real-repository-validation*.md` series.
 
 ## Repository hygiene gate
 
@@ -62,7 +72,7 @@ All graph analyzers and rules reuse the canonical `source -> target` direction.
 
 Circular Dependency Detection uses one strongly connected component as one circularity finding. Rule `SQL001` adapts this contract with severity `error`.
 
-Dead Object Detection treats a component with no incoming static references from outside the component as a **candidate only**. Rule `SQL002` adapts this contract with severity `warning`; it preserves entry-point, trigger and external-usage safeguards.
+Dead Object Detection treats a component with no incoming static references from outside the component as a **candidate only**. Rule `SQL002` adapts this contract with severity `warning`; it preserves entry-point, trigger and external-usage safeguards. Script nodes are not dead-object candidates.
 
 The Rule Engine parses inputs once, resolves one dependency graph and shares that context across selected rules. New actionable checks should use stable rule IDs and the normalized Finding/Severity contract instead of adding isolated reporting models by default.
 
