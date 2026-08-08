@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.21.0 - 2026-08-08
+
+### Added
+- Object-scoped parser ownership for multiple durable SQL definitions in one physical `.sql` source.
+- Standalone `GO` batch-boundary detection that closes the active object scope without treating identifiers named `GO` as separators.
+- Guarded durable DDL discovery for migration patterns such as `IF OBJECT_ID(...) ... CREATE TABLE ...`.
+- Stored-procedure parameter extraction for both parenthesized and conventional unparenthesized T-SQL syntax.
+- `tests/fixtures/object_scopes/` plus regression tests proving isolation of parameters, variables, references, temporary tables and dynamic-SQL evidence.
+- `docs/object-scoped-parser.md` as the architecture contract for parser evidence ownership.
+- CI smoke coverage for object-scoped parsing through both the repository wrapper and the installed wheel.
+
+### Changed
+- `ParserContext` now materializes immutable `SqlObject` instances at object, batch and document boundaries instead of accumulating all evidence globally for the first object.
+- Creation parsing can locate supported durable definitions inside guarded statements instead of requiring `CREATE` to be the first token.
+- Variable declaration discovery now works when the first `DECLARE` appears in the same semicolon-delimited statement as a module header.
+- Parser support and architecture documentation now guarantee multi-definition sources when ownership boundaries can be established.
+
+### Fixed
+- References, parameters, variables, temporary tables and dynamic-SQL flags no longer leak from one durable object to another object defined later in the same source file.
+- Dependency graphs now use the correct object as the source for edges produced from multi-definition files.
+
+### Compatibility
+- Public `SqlDocument`, `SqlObject` and `Reference` fields remain unchanged.
+- Dependency direction remains `source -> target`.
+- Dependency Resolver, Cross Reference, Impact Analysis, Circular Dependency, Dead Object and Rule Engine public semantics remain unchanged.
+- Existing one-object-per-file repositories remain supported.
+
 ## 0.20.0 - 2026-08-08
 
 ### Added
@@ -149,7 +176,7 @@
 - Self-reference detection for single-object cycles.
 - Deterministic JSON schema `1.0` with cycle/object summaries, members and internal edges.
 - Public Circular Dependency API and `circular-dependencies` CLI command.
-- Unit, analyzer, serialization and CLI regression coverage for circular dependencies.
+- Unit, analyzer, serializer and CLI regression coverage for circular dependencies.
 - CI smoke validation for the new command.
 
 ### Changed
