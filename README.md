@@ -2,8 +2,8 @@
 
 SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 
-**Current version:** `0.24.0`  
-**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, evidence-driven parser hardening, object-scoped multi-definition parsing and physical SQL source identity. PyPI publication remains explicitly deferred.
+**Current version:** `0.25.0`  
+**Development status:** stabilized MVP static-analysis core with installable packaging, controlled GitHub Releases, source-aware repository analysis and a unified versioned Repository Analysis result with JSON + self-contained HTML output. PyPI publication remains explicitly deferred.
 
 ## Implemented capabilities
 
@@ -23,6 +23,8 @@ SQL Studio is a Python 3.12+ toolkit for static analysis of SQL repositories.
 - circular dependency detection using strongly connected components;
 - conservative dead-object candidate detection;
 - consolidated static-analysis Rule Engine with severity gates;
+- unified Repository Analysis JSON schema `1.0`;
+- self-contained HTML repository-analysis report with object search and source traceability;
 - JSON and self-contained HTML impact reports;
 - installable Python package with wheel/sdist distributions;
 - `sqlstudio` console command plus repository-wrapper compatibility;
@@ -44,6 +46,37 @@ python -m build
 
 SQL Studio is installable and GitHub Releases attach wheel and sdist artifacts. It is **not published to PyPI** under the current policy.
 
+## Unified Repository Analysis
+
+`0.25.0` adds the product-level analysis command:
+
+```bash
+sqlstudio repository-analysis sql/ --recursive
+```
+
+It parses each physical SQL source once, builds one canonical dependency graph, then reuses that shared context for:
+
+- repository/source inventory;
+- source-to-object traceability;
+- object dependencies and dependents;
+- key-object ranking by incoming dependents;
+- circular dependencies;
+- dead-object candidates and exclusions;
+- normalized static-analysis findings;
+- dynamic-SQL uncertainty.
+
+Generate both machine-readable JSON and a self-contained human report from the same in-memory result:
+
+```bash
+sqlstudio repository-analysis sql/ --recursive \
+  --output reports/repository-analysis.json \
+  --html reports/repository-analysis.html
+```
+
+`RepositoryAnalysisResult` is the canonical Python result. `RepositoryAnalysisSerializer` owns new JSON schema `1.0`; existing Dependency, Impact, Circular, Dead Object and Rule Engine schemas remain unchanged.
+
+See [Unified Repository Analysis](docs/unified-repository-analysis.md) and [CLI](docs/CLI.md).
+
 ## Dependency semantics
 
 The graph stores:
@@ -64,9 +97,7 @@ Therefore:
 
 ## Physical SQL source identity
 
-Repository SQL is not always a schema definition. Seed, migration and maintenance files can contain real dependencies while defining no procedure, view, function or table.
-
-`0.24.0` introduces:
+Seed, migration and maintenance files can contain real dependencies while defining no procedure, view, function or table.
 
 ```python
 from sqlstudio import SqlSource
@@ -85,7 +116,7 @@ script:sql/import/003_seed_import_columns_v3.sql
 
 A durable object such as `dbo.Report` keeps its SQL identity even when parsed through `SqlSource`.
 
-All repository-facing analyzers expose `analyze_source()` / `analyze_sources()`. Existing raw-text `parse()`, `analyze()` and `analyze_many()` methods remain compatible. The CLI uses the source-aware path so independent physical scripts no longer collapse into one `UnnamedScript` graph node.
+All repository-facing analyzers expose `analyze_source()` / `analyze_sources()`. Existing raw-text `parse()`, `analyze()` and `analyze_many()` methods remain compatible. The CLI uses the source-aware path so independent physical scripts do not collapse into one graph node.
 
 See [SQL Source Identity](docs/sql-source-identity.md).
 
@@ -114,6 +145,7 @@ Dead Object Detection produces **candidates only** and never asserts an object i
 
 ```bash
 sqlstudio --help
+sqlstudio repository-analysis examples/dead_objects --entry-point dbo.Entry
 sqlstudio parse examples/sample_procedure.sql
 sqlstudio dependencies examples/sample_procedure.sql
 sqlstudio cross-references examples/sample_procedure.sql
@@ -139,7 +171,7 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -v
 python -m build
 ```
 
-GitHub Actions validates Python 3.12, compilation, imports, the full test suite, source-aware script identity, representative parser fixtures, legacy wrapper smoke paths, wheel/sdist construction and execution of the installed `sqlstudio` command outside the repository checkout.
+GitHub Actions validates Python 3.12, compilation, imports, the full test suite, source-aware script identity, unified repository-analysis JSON/HTML, representative parser fixtures, legacy wrapper smoke paths, wheel/sdist construction and execution of the installed `sqlstudio` command outside the repository checkout.
 
 ## Release policy
 
@@ -151,6 +183,7 @@ See [Release Policy](docs/release-policy.md) and [Main Branch Protection](docs/b
 
 - [Architecture](docs/architecture.md)
 - [CLI](docs/CLI.md)
+- [Unified Repository Analysis](docs/unified-repository-analysis.md)
 - [Packaging and installation](docs/packaging.md)
 - [SQL Source Identity](docs/sql-source-identity.md)
 - [T-SQL Parser Support Contract](docs/parser-support.md)
