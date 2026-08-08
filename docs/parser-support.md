@@ -4,7 +4,7 @@
 
 SQL Studio uses a lightweight static parser to discover SQL objects and dependency references. It is intentionally **not** a full T-SQL compiler or semantic engine.
 
-Version `0.22.0` extends the object-scoped parser contract with DDL dependency evidence from inline foreign keys observed during real-repository dogfooding. One source file may contain multiple durable SQL-object definitions, and each emitted `SqlObject` owns only the evidence observed in its active scope.
+Version `0.23.0` hardens procedure/function signature parsing from real PULSE evidence while preserving the `0.21.0` object-scoped ownership architecture and the `0.22.0` DDL foreign-key dependency contract.
 
 ## Supported reference and definition patterns
 
@@ -17,6 +17,9 @@ The regression corpus covers and the parser is expected to preserve:
 - permission syntax such as `GRANT REFERENCES ON ...` without false dependency emission;
 - standalone `GO` lines as client batch/object-scope boundaries;
 - stored-procedure parameters with or without surrounding parentheses;
+- parameterized datatypes such as `nvarchar(320)`, `decimal(18,4)` and `datetime2(3)` without prematurely ending or splitting the parameter list;
+- parameter defaults and `OUTPUT` / `OUT` markers;
+- input-normalization `SET @Parameter = ...` statements without duplicating parameters as local variables;
 - multipart identifiers such as `dbo.TableA` and `OtherDb.sales.TableA`;
 - bracket-quoted identifiers, including names containing spaces;
 - multiple `FROM` / `JOIN` references in one statement;
@@ -31,7 +34,7 @@ The regression corpus covers and the parser is expected to preserve:
 - direct `EXEC` calls and dynamic execution markers;
 - string literals containing escaped/doubled quote characters.
 
-References are deduplicated case-insensitively **within each parsed object scope** while preserving the first observed casing.
+References are deduplicated case-insensitively **within each parsed object scope** while preserving the first observed casing. Parameters and local variables are also separated case-insensitively within their owning scope.
 
 ## Object-scope ownership
 
@@ -40,6 +43,27 @@ References are deduplicated case-insensitively **within each parsed object scope
 The active scope owns parameters, variables, references/calls, temporary tables and dynamic-SQL evidence. The scope is finalized when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends.
 
 See `docs/object-scoped-parser.md` for the architecture contract.
+
+## Procedure and function parameters
+
+SQL Server stored procedures commonly omit outer parentheses around the parameter list, while functions commonly include them. Datatypes can also contain their own nested parentheses and commas:
+
+```sql
+CREATE PROCEDURE dbo.P
+    @Name nvarchar(320),
+    @Amount decimal(18,4) = 0,
+    @At datetime2(3) = NULL
+AS
+BEGIN
+    ...
+END;
+```
+
+The parser distinguishes datatype nesting from the optional outer parameter-list boundary. Inner `)` tokens and commas therefore do not terminate or split the module signature.
+
+A procedure parameter that is later assigned through `SET` remains a parameter only. Real local variables introduced through `DECLARE` remain in `SqlObject.variables`.
+
+See `docs/real-repository-validation-pass-3.md` for the evidence and reduced fixture.
 
 ## DDL foreign-key evidence
 
@@ -55,15 +79,11 @@ CREATE TABLE warroom.Child
 );
 ```
 
-SQL Studio records:
-
-```text
-warroom.Child -> warroom.Parent
-```
+SQL Studio records `warroom.Child -> warroom.Parent`.
 
 The parser does **not** treat every occurrence of `REFERENCES` as an object relation. A `REFERENCES` target is collected only when `FOREIGN KEY` evidence exists earlier in the same statement. This avoids permission syntax such as `GRANT REFERENCES ON ...` becoming a false target named `ON`.
 
-This milestone guarantees inline foreign-key dependencies in object-owned DDL. Standalone `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` ownership requires reliable identification of the altered durable source object and is not silently approximated as a schema-object edge.
+Inline foreign-key dependencies in object-owned DDL are guaranteed. Standalone `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` ownership requires reliable identification of the altered durable source object and is not silently approximated as a schema-object edge.
 
 ## Identifier normalization
 
@@ -92,6 +112,7 @@ The parser remains conservative and does not claim complete T-SQL grammar covera
 - Alias resolution is statement-local and evidence-based; SQL Studio does not perform full name binding or query optimization.
 - Permanent runtime DDL encountered inside an already active stored module is not promoted to a second top-level repository definition.
 - Standalone `ALTER TABLE` DDL is not yet promoted to a durable source-object scope.
+- Parameter datatype metadata currently records the logical datatype identifier rather than reconstructing full size/precision text; parentheses are parsed for boundary correctness.
 - Multi-definition support is guaranteed only where source structure provides reliable ownership boundaries; syntax that cannot be assigned to the correct object remains unsupported rather than being guessed.
 - Synonyms, linked-server semantics, generated SQL and runtime metadata require separate explicit support before they can be treated as complete dependency evidence.
 
@@ -101,13 +122,13 @@ Representative fixtures live under:
 
 - `tests/fixtures/tsql_complex/` — dependency-oriented complex T-SQL patterns;
 - `tests/fixtures/real_repository/` — reduced synthetic cases derived from real-repository failures;
-- `tests/fixtures/object_scopes/` — multi-definition, batch-boundary, evidence-ownership and DDL foreign-key cases.
+- `tests/fixtures/object_scopes/` — multi-definition, batch-boundary, evidence-ownership, DDL foreign-key and real procedure-parameter cases.
 
 Every fixture must represent dependency or ownership behavior rather than merely increasing syntax variety.
 
 ## Compatibility rule
 
-Parser hardening may improve missing/false references, but it must not redefine the canonical graph direction:
+Parser hardening may improve missing/false references, parameter metadata and variable classification, but it must not redefine the canonical graph direction:
 
 ```text
 source -> target
