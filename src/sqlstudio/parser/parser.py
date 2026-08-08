@@ -5,7 +5,7 @@ from typing import List, Sequence
 
 from sqlstudio.source import SqlSource
 
-from .ast import SqlDocument, Token
+from .ast import Parameter, Reference, SqlDocument, SqlObject, Token, Variable
 from .context import ParserContext
 from .statements import (
     CreateStatementParser,
@@ -27,16 +27,121 @@ class SQLParser:
         return self._parse(sql_text)
 
     def parse_source(self, source: SqlSource) -> SqlDocument:
-        """Parse a physical source and give script-only scopes stable identity."""
+        """Parse one physical source with one stable fallback Script identity.
+
+        Object-scoped parsing may materialize several internal Script scopes when
+        durable definitions or ``GO`` batches split a physical file.  The
+        source-aware contract represents all fallback script evidence from that
+        file as one ``script:<source_id>`` object while leaving durable objects
+        untouched.
+        """
 
         document = self._parse(source.sql_text)
-        objects = [
-            replace(sql_object, name=source.script_object_name)
-            if sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
-            else sql_object
+        script_scopes = [
+            sql_object
             for sql_object in document.objects
+            if sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
         ]
+        durable_objects = [
+            sql_object
+            for sql_object in document.objects
+            if not (sql_object.object_type == "Script" and sql_object.name == "UnnamedScript")
+        ]
+
+        if script_scopes:
+            merged_script = self._merge_script_scopes(source, script_scopes)
+            first_script_index = next(
+                index
+                for index, sql_object in enumerate(document.objects)
+                if sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
+            )
+            objects: list[SqlObject] = []
+            durable_iter = iter(durable_objects)
+            inserted_script = False
+            for index, sql_object in enumerate(document.objects):
+                is_fallback_script = (
+                    sql_object.object_type == "Script"
+                    and sql_object.name == "UnnamedScript"
+                )
+                if is_fallback_script:
+                    if not inserted_script and index == first_script_index:
+                        objects.append(merged_script)
+                        inserted_script = True
+                    continue
+                objects.append(next(durable_iter))
+        else:
+            objects = durable_objects
+
         return SqlDocument(sql_text=document.sql_text, objects=objects, tokens=document.tokens)
+
+    @classmethod
+    def _merge_script_scopes(
+        cls,
+        source: SqlSource,
+        scopes: Sequence[SqlObject],
+    ) -> SqlObject:
+        return SqlObject(
+            name=source.script_object_name,
+            object_type="Script",
+            parameters=cls._unique_parameters(scopes),
+            variables=cls._unique_variables(scopes),
+            references=cls._unique_references(scopes),
+            temporary_tables=cls._unique_temporary_tables(scopes),
+            dynamic_sql=any(scope.dynamic_sql for scope in scopes),
+        )
+
+    @staticmethod
+    def _unique_parameters(scopes: Sequence[SqlObject]) -> list[Parameter]:
+        seen: set[str] = set()
+        result: list[Parameter] = []
+        for scope in scopes:
+            for parameter in scope.parameters:
+                key = parameter.name.casefold()
+                if key not in seen:
+                    seen.add(key)
+                    result.append(parameter)
+        return result
+
+    @staticmethod
+    def _unique_variables(scopes: Sequence[SqlObject]) -> list[Variable]:
+        seen: set[tuple[str, str | None]] = set()
+        result: list[Variable] = []
+        for scope in scopes:
+            for variable in scope.variables:
+                key = (variable.name.casefold(), variable.value)
+                if key not in seen:
+                    seen.add(key)
+                    result.append(variable)
+        return result
+
+    @staticmethod
+    def _unique_references(scopes: Sequence[SqlObject]) -> list[Reference]:
+        seen: set[tuple[str | None, str | None, str, str]] = set()
+        result: list[Reference] = []
+        for scope in scopes:
+            for reference in scope.references:
+                key = (
+                    reference.database.casefold() if reference.database else None,
+                    reference.schema.casefold() if reference.schema else None,
+                    reference.name.casefold(),
+                    reference.kind.casefold(),
+                )
+                if key not in seen:
+                    seen.add(key)
+                    result.append(reference)
+        return result
+
+    @staticmethod
+    def _unique_temporary_tables(scopes: Sequence[SqlObject]) -> list[str]:
+        seen: set[str] = set()
+        result: list[str] = []
+        for scope in scopes:
+            for name in scope.temporary_tables:
+                key = name.casefold()
+                if key not in seen:
+                    seen.add(key)
+                    result.append(name)
+        return result
 
     def _parse(self, sql_text: str) -> SqlDocument:
         if not sql_text or not sql_text.strip():
