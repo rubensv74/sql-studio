@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.25.0 - 2026-08-08
+
+### Added
+- `RepositoryAnalysisResult` as the canonical product-level result for one complete SQL repository analysis.
+- `RepositoryAnalysisEngine` that parses each `SqlSource` once, resolves one dependency graph and reuses that shared context for rules, cycles, dead-object candidates and repository inventory.
+- Repository Analysis JSON schema `1.0` with summary metrics, source/object provenance, graph nodes/edges, cycles, dead-object candidates/exclusions, normalized findings and dynamic-SQL uncertainty.
+- `RepositoryAnalysisReportGenerator` and exporter for a self-contained HTML report with executive metrics, inventory, dependency overview, key-object ranking, cycles, dead candidates, findings, uncertainty, searchable object explorer and source traceability.
+- `sqlstudio repository-analysis` CLI command with recursive input, JSON output, HTML output, compact JSON and repeatable entry-point support.
+- Public repository-analysis API exports and repository-checkout wrapper compatibility.
+- Architecture contract in `docs/unified-repository-analysis.md` plus CLI/unit coverage.
+
+### Changed
+- Repository-level reporting now composes existing stable analyzers around one shared parse/graph context instead of requiring consumers to invoke separate commands and reconcile results.
+- Key-object ranking uses incoming direct dependents from the canonical `source -> target` graph and remains informational rather than a new severity/rule.
+- Source-to-object provenance is maintained by pairing `SqlSource` with its parsed document; the SQL AST itself remains unchanged.
+
+### Safety and compatibility
+- Existing Dependency, Cross Reference, Impact, Circular Dependency, Dead Object and Static-analysis JSON schemas are unchanged.
+- `SqlDocument`, `SqlObject`, `Reference` and existing analyzer methods are unchanged.
+- Dead Object findings remain review candidates only and serialize `safe_to_delete=false` in the unified report.
+- Dynamic SQL remains an uncertainty boundary; the unified report does not invent dependencies that static analysis cannot prove.
+- Dependency direction remains `source -> target`.
+- PyPI publication remains out of scope.
+
 ## 0.24.0 - 2026-08-08
 
 ### Added
@@ -139,7 +163,7 @@
 - Branch protection becomes the remaining repository-administration gate after the first controlled release.
 
 ### Compatibility
-- `sqlstudio new-handoff <name>` remains supported and continues writing `handoffs/<name>.md`.
+- `sqlstudio new-handoff <name>` remains supported and continues writing to `handoffs/<name>.md`.
 - No package API, CLI command or analysis schema changes are introduced by release automation.
 
 ## 0.18.0 - 2026-08-08

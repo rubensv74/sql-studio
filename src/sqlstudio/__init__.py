@@ -24,6 +24,15 @@ from .dependencies import (
 )
 from .parser import Parameter, Reference, SQLParser, SqlDocument, SqlObject, Token, Variable
 from .repository import RepositoryEngine
+from .repository_analysis import (
+    RepositoryAnalysisEngine,
+    RepositoryAnalysisReportExporter,
+    RepositoryAnalysisReportGenerator,
+    RepositoryAnalysisResult,
+    RepositoryAnalysisSerializer,
+    RepositoryObjectRecord,
+    RepositorySourceRecord,
+)
 from .rules import (
     CircularDependencyRule,
     DeadObjectCandidateRule,
@@ -63,7 +72,14 @@ __all__ = [
     "Finding",
     "Parameter",
     "Reference",
+    "RepositoryAnalysisEngine",
+    "RepositoryAnalysisReportExporter",
+    "RepositoryAnalysisReportGenerator",
+    "RepositoryAnalysisResult",
+    "RepositoryAnalysisSerializer",
     "RepositoryEngine",
+    "RepositoryObjectRecord",
+    "RepositorySourceRecord",
     "RuleContext",
     "RuleResult",
     "SQLParser",
