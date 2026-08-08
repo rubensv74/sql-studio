@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import List, Sequence
 
 from sqlstudio.source import SqlSource
@@ -30,9 +29,9 @@ class SQLParser:
         """Parse one physical source with one stable fallback Script identity.
 
         Object-scoped parsing may materialize several internal Script scopes when
-        durable definitions or ``GO`` batches split a physical file.  The
-        source-aware contract represents all fallback script evidence from that
-        file as one ``script:<source_id>`` object while leaving durable objects
+        durable definitions or ``GO`` batches split a physical file. The
+        source-aware contract aggregates all fallback script evidence from that
+        file into one ``script:<source_id>`` object while leaving durable objects
         untouched.
         """
 
@@ -40,39 +39,27 @@ class SQLParser:
         script_scopes = [
             sql_object
             for sql_object in document.objects
-            if sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
+            if self._is_fallback_script(sql_object)
         ]
-        durable_objects = [
-            sql_object
-            for sql_object in document.objects
-            if not (sql_object.object_type == "Script" and sql_object.name == "UnnamedScript")
-        ]
+        if not script_scopes:
+            return document
 
-        if script_scopes:
-            merged_script = self._merge_script_scopes(source, script_scopes)
-            first_script_index = next(
-                index
-                for index, sql_object in enumerate(document.objects)
-                if sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
-            )
-            objects: list[SqlObject] = []
-            durable_iter = iter(durable_objects)
-            inserted_script = False
-            for index, sql_object in enumerate(document.objects):
-                is_fallback_script = (
-                    sql_object.object_type == "Script"
-                    and sql_object.name == "UnnamedScript"
-                )
-                if is_fallback_script:
-                    if not inserted_script and index == first_script_index:
-                        objects.append(merged_script)
-                        inserted_script = True
-                    continue
-                objects.append(next(durable_iter))
-        else:
-            objects = durable_objects
+        merged_script = self._merge_script_scopes(source, script_scopes)
+        objects: list[SqlObject] = []
+        script_inserted = False
+        for sql_object in document.objects:
+            if self._is_fallback_script(sql_object):
+                if not script_inserted:
+                    objects.append(merged_script)
+                    script_inserted = True
+                continue
+            objects.append(sql_object)
 
         return SqlDocument(sql_text=document.sql_text, objects=objects, tokens=document.tokens)
+
+    @staticmethod
+    def _is_fallback_script(sql_object: SqlObject) -> bool:
+        return sql_object.object_type == "Script" and sql_object.name == "UnnamedScript"
 
     @classmethod
     def _merge_script_scopes(
@@ -104,11 +91,11 @@ class SQLParser:
 
     @staticmethod
     def _unique_variables(scopes: Sequence[SqlObject]) -> list[Variable]:
-        seen: set[tuple[str, str | None]] = set()
+        seen: set[str] = set()
         result: list[Variable] = []
         for scope in scopes:
             for variable in scope.variables:
-                key = (variable.name.casefold(), variable.value)
+                key = variable.name.casefold()
                 if key not in seen:
                     seen.add(key)
                     result.append(variable)
