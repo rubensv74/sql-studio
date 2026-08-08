@@ -97,11 +97,9 @@ class ObjectScopedParserTests(unittest.TestCase):
             {"warroom.ExportBatch"},
         )
 
-        # The final GRANT REFERENCES batch is permission syntax and must not
-        # create a dependency target named ON or duplicate the table FK edges.
-        scripts = [obj for obj in document.objects if obj.object_type == "Script"]
-        self.assertTrue(scripts)
-        self.assertNotIn("ON", reference_names(scripts[-1]))
+        # The final GRANT REFERENCES batch is permission-only. It must not
+        # create a synthetic Script object or a dependency target named ON.
+        self.assertFalse(any(obj.object_type == "Script" for obj in document.objects))
 
     def test_grant_references_permission_is_not_foreign_key_dependency(self) -> None:
         document = SQLParser().parse(
