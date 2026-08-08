@@ -1,0 +1,93 @@
+name: Diagnose WWI Parser References
+
+on:
+  push:
+    branches:
+      - "agent/dogfood-wwi-release-026"
+    paths:
+      - ".github/workflows/diagnose-wwi-parser-026.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Microsoft SQL Server samples
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/sql-server-samples
+          ref: 1ab31bc560415b570d57bb5ff9896f4698891321
+          path: samples-repo
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install released SQL Studio 0.26.0
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps \
+            https://github.com/rubensv74/sql-studio/releases/download/v0.26.0/sql_studio-0.26.0-py3-none-any.whl
+
+      - name: Trace suspicious references and parser tokens
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from sqlstudio import SQLParser, SqlSource
+          from sqlstudio.dependencies import DependencyResolver
+
+          root = Path('samples-repo/samples/databases/wide-world-importers/wwi-ssdt')
+          sources = []
+          parser = SQLParser()
+          object_to_file = {}
+          documents = []
+
+          for path in sorted(root.rglob('*.sql')):
+              rel = path.as_posix()
+              source = SqlSource(rel, path.read_text(encoding='utf-8', errors='ignore'), path=rel)
+              doc = parser.parse_source(source)
+              sources.append(source)
+              documents.append(doc)
+              for obj in doc.objects:
+                  name = f'{obj.schema}.{obj.name}' if obj.schema else obj.name
+                  object_to_file[name.casefold()] = path
+
+          graph = DependencyResolver().resolve(documents)
+          suspicious_edges = [e for e in graph.edges if e.target.name.casefold() in {'as','on','with'}]
+          print('SUSPICIOUS_EDGE_COUNT', len(suspicious_edges))
+
+          affected = {}
+          for edge in suspicious_edges:
+              path = object_to_file.get(edge.source.name.casefold())
+              print(f'EDGE source={edge.source.name} target={edge.target.name} kind={edge.kind.value} file={path}')
+              if path:
+                  affected.setdefault(path, set()).add(edge.target.name.casefold())
+
+          for path, targets in sorted(affected.items(), key=lambda item: str(item[0]).casefold()):
+              print(f'=== FILE {path} TARGETS={sorted(targets)} ===')
+              sql = path.read_text(encoding='utf-8', errors='ignore')
+              doc = SQLParser().parse_source(SqlSource(path.as_posix(), sql))
+              for obj in doc.objects:
+                  name = f'{obj.schema}.{obj.name}' if obj.schema else obj.name
+                  bad = [r for r in obj.references if r.name.casefold() in {'as','on','with'}]
+                  if bad:
+                      print('OBJECT', name)
+                      for ref in bad:
+                          print('BAD_REF', ref.database, ref.schema, ref.name, ref.kind)
+
+              raw_doc = SQLParser().parse(sql)
+              tokens = raw_doc.tokens
+              trigger_words = {'FROM','JOIN','USING','INTO','APPLY','MERGE','UPDATE','REFERENCES','EXEC','EXECUTE'}
+              for i, token in enumerate(tokens):
+                  if token.kind == 'identifier' and token.value.upper() in trigger_words:
+                      lo = max(0, i - 4)
+                      hi = min(len(tokens), i + 9)
+                      snippet = ' '.join(t.value for t in tokens[lo:hi])
+                      print(f'TRIGGER[{i}] {token.value.upper()} :: {snippet}')
+              print('--- SQL ---')
+              print(sql)
+              print('--- END SQL ---')
+          PY
