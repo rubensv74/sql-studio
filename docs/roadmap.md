@@ -4,6 +4,7 @@
 
 - Repository Engine
 - SQL Parser with representative complex T-SQL regression corpus
+- Object-scoped multi-definition parser ownership — multiple durable objects per source with isolated evidence
 - Dependency Engine
 - Cross Reference Engine
 - Impact Analysis Engine
@@ -17,32 +18,27 @@
 - Canonical handoff repository path — `handoffs/`; legacy singular duplicate removed
 - Performance tooling scope resolved — runtime profiler/benchmark deferred post-MVP and misleading legacy stubs removed
 - GitHub-only release policy — successful `main` CI creates immutable SemVer tag + GitHub Release with wheel/sdist assets
-- First controlled GitHub Release `v0.19.0` verified with wheel and sdist assets
-- Real-repository validation pass 1 — JSON rowset and temporary-object false positives reduced into regression fixtures and corrected in `0.20.0`
+- Controlled GitHub Releases verified through `v0.20.0`
+- Real-repository validation pass 1 — JSON rowset and temporary-object false positives corrected in `0.20.0`
+- Multi-definition architecture decision resolved in `0.21.0` through object-scoped evidence ownership
 
 ## Next
 
-1. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
-2. Resolve the architecture decision for multiple independent durable `CREATE` definitions in one `.sql` source
-3. Continue real-repository dogfooding and parser hardening from concrete failures after that boundary is resolved
-4. Design the unified Repository Analysis Report only after real-repository graph fidelity is adequate
+1. Continue real-repository dogfooding against multi-definition migration and module files using the `0.21.0` ownership model
+2. Expand parser coverage only from concrete dependency/ownership failures
+3. Design the unified Repository Analysis Report after graph fidelity is validated on representative repositories
+4. Protect `main` using the documented CI-gated branch policy when repository-administration access is available
 5. Revisit PyPI publication only through a separate explicit decision
 
 ## Parser gates
 
 The parser is dependency-oriented rather than a complete T-SQL compiler. Parser changes must be driven by reduced reproducible fixtures and preserve the public AST unless a separate versioned decision is made.
 
+A physical `.sql` source may contain multiple durable objects. Each object owns only its own parameters, variables, references, temporary tables and dynamic-SQL evidence. Ownership closes on a new durable definition, a standalone `GO` batch boundary or end of document.
+
 CTE aliases, temp tables and table variables must not become durable dependency nodes. `OPENJSON`, `OPENQUERY` and `OPENROWSET` are built-in/runtime rowset boundaries rather than local schema objects. Dynamic SQL remains uncertainty unless statically resolvable. The canonical graph direction remains `source -> target`.
 
-Current support and limitations are frozen in `docs/parser-support.md`. Real-repository evidence and the first discovered architecture boundary are recorded in `docs/real-repository-validation.md`.
-
-### Open architecture boundary: multi-definition source files
-
-Real-repository validation confirmed migration/foundation scripts that contain several independent durable schema-object definitions in one `.sql` file.
-
-The current parser accumulates parameters, references, transient state and dynamic-SQL evidence at document scope and then exposes one primary durable source object. Correct multi-definition support therefore requires an explicit object-scope/reference-ownership model; it must not be approximated by simply returning every encountered `CREATE` token.
-
-No implementation of that model begins without a deliberate architecture decision.
+Current syntax support is frozen in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`. Real-repository evidence is recorded in `docs/real-repository-validation.md`.
 
 ## Repository hygiene gate
 
