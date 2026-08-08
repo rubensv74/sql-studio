@@ -31,7 +31,7 @@ jobs:
       - name: Validate package imports
         run: |
           python -c "import sqlstudio"
-          python -c "from sqlstudio import __version__, SqlSource"
+          python -c "from sqlstudio import __version__, SqlSource, RepositoryAnalysisEngine, RepositoryAnalysisSerializer"
           python -c "from sqlstudio.impact_analysis import ImpactAnalysisEngine, ImpactReportExporter"
           python -c "from sqlstudio.circular_dependencies import CircularDependencyEngine, CircularDependencySerializer"
           python -c "from sqlstudio.dead_objects import DeadObjectAnalyzer, DeadObjectSerializer"
@@ -86,6 +86,10 @@ jobs:
           python cli/sqlstudio.py analyze examples/dead_objects --entry-point dbo.Entry > /tmp/rules.json
           python -m json.tool /tmp/rules.json > /dev/null
           python -c "import json; p=json.load(open('/tmp/rules.json')); assert p['summary']['rule_count'] == 2; assert p['summary']['warning_count'] == 1; assert p['findings'][0]['rule_id'] == 'SQL002'; assert p['findings'][0]['objects'] == ['dbo.Orphan']"
+          python cli/sqlstudio.py repository-analysis examples/dead_objects --entry-point dbo.Entry --output /tmp/repository-analysis.json --html /tmp/repository-analysis.html
+          python -c "import json; p=json.load(open('/tmp/repository-analysis.json')); assert p['schema_version']=='1.0'; assert p['summary']['source_count'] >= 1; assert p['context']['dependency_direction']=='source -> target'; assert p['context']['dead_objects_are_candidates_only'] is True; assert any(f['rule_id']=='SQL002' for f in p['findings'])"
+          test -s /tmp/repository-analysis.html
+          grep -q "Análisis del repositorio" /tmp/repository-analysis.html
           python cli/sqlstudio.py analyze examples/circular_dependencies --rule SQL001 > /tmp/rules-cycle.json
           python -c "import json; p=json.load(open('/tmp/rules-cycle.json')); assert p['summary']['error_count'] == 1; assert p['findings'][0]['rule_id'] == 'SQL001'"
           set +e
@@ -128,6 +132,10 @@ jobs:
           PYTHONPATH= sqlstudio analyze "$repo/examples/dead_objects" --entry-point dbo.Entry > /tmp/installed-rules.json
           PYTHONPATH= python -m json.tool /tmp/installed-rules.json > /dev/null
           PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-rules.json')); assert p['summary']['rule_count'] == 2; assert p['findings'][0]['rule_id'] == 'SQL002'"
+          PYTHONPATH= sqlstudio repository-analysis "$repo/examples/dead_objects" --entry-point dbo.Entry --output /tmp/installed-repository-analysis.json --html /tmp/installed-repository-analysis.html
+          PYTHONPATH= python -c "import json; p=json.load(open('/tmp/installed-repository-analysis.json')); assert p['schema_version']=='1.0'; assert p['summary']['source_count'] >= 1; assert p['context']['dependency_direction']=='source -> target'; assert any(f['rule_id']=='SQL002' for f in p['findings'])"
+          test -s /tmp/installed-repository-analysis.html
+          grep -q "Trazabilidad de fuentes" /tmp/installed-repository-analysis.html
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
