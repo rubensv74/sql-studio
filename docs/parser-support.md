@@ -4,7 +4,7 @@
 
 SQL Studio uses a lightweight static parser to discover SQL objects and dependency references. It is intentionally **not** a full T-SQL compiler or semantic engine.
 
-Version `0.23.0` hardens procedure/function signature parsing from real PULSE evidence while preserving the `0.21.0` object-scoped ownership architecture and the `0.22.0` DDL foreign-key dependency contract.
+The parser combines the `0.21.0` object-scoped ownership architecture, `0.22.0` DDL foreign-key dependency evidence, `0.23.0` real procedure/function signature handling and the `0.26.0` PULSE hardening for physical Script aggregation and transient UPDATE aliases.
 
 ## Supported reference and definition patterns
 
@@ -26,7 +26,8 @@ The regression corpus covers and the parser is expected to preserve:
 - nested/derived-table queries where inner and outer durable sources are collected;
 - common table expressions (CTEs), where the CTE alias itself is not emitted as a durable dependency;
 - `MERGE [INTO] target USING source` relations;
-- `UPDATE alias ... FROM schema.Table AS alias` resolution;
+- `UPDATE alias ... FROM schema.Table AS alias` resolution for durable sources;
+- `UPDATE alias ... FROM #temp/@table/CTE AS alias` suppression when the alias resolves to a transient source;
 - `APPLY` relation targets when the target is statically named;
 - local temporary tables and table variables as transient objects rather than durable graph dependencies;
 - `CREATE TABLE #temp` / `CREATE TABLE ##temp` as transient creation rather than durable table definitions;
@@ -42,7 +43,9 @@ References are deduplicated case-insensitively **within each parsed object scope
 
 The active scope owns parameters, variables, references/calls, temporary tables and dynamic-SQL evidence. The scope is finalized when a new durable definition starts, a standalone `GO` batch boundary is reached, or the document ends.
 
-See `docs/object-scoped-parser.md` for the architecture contract.
+Raw-text `SQLParser.parse()` preserves these internal ownership scopes. The source-aware `parse_source()` layer may aggregate multiple fallback `UnnamedScript` scopes into one physical `script:<source_id>` identity; durable object scopes are never merged by that aggregation.
+
+See `docs/object-scoped-parser.md` and `docs/sql-source-identity.md` for the architecture contracts.
 
 ## Procedure and function parameters
 
@@ -89,15 +92,21 @@ Inline foreign-key dependencies in object-owned DDL are guaranteed. Standalone `
 
 Bracket quoting is syntax, not part of the logical object name. For example `[OtherDb].[sales].[Order Header]` is represented as database `OtherDb`, schema `sales`, name `Order Header`. The public `Reference` model remains unchanged.
 
-## CTE and transient-object boundary
+## CTE, transient-object and alias boundary
 
 CTE names, `#temp` / `##temp` tables and `@table` variables are local execution constructs. SQL Studio may record temporary-table presence on `SqlObject.temporary_tables`, but these names must not create durable dependency-graph nodes or targets.
 
 A utility script whose only `CREATE TABLE` statements are temporary remains a `Script`; the temporary table must not become a durable table object. References inside a CTE or derived table are still collected when their source objects are statically identifiable.
 
+Alias binding is statement-local. If a durable source is known, `UPDATE alias ... FROM dbo.Table AS alias` resolves to the durable table. If the source is known to be transient or a built-in rowset, the alias is remembered only as non-durable evidence so `UPDATE alias` cannot fall back to a false `Unknown` graph node.
+
+This behavior is backed by the PULSE `UPDATE eb ... FROM #ExportBase eb` regression recorded in `docs/real-repository-validation-pass-4.md`.
+
 ## Built-in rowset boundary
 
 `OPENJSON`, `OPENQUERY` and `OPENROWSET` can syntactically appear after `FROM` / `JOIN`, but they are not local schema objects. SQL Studio suppresses them as dependency targets while retaining durable relations around them.
+
+Aliases bound to those built-in rowsets are also non-durable for UPDATE-target resolution.
 
 The suppression list is evidence-driven. New built-in table-valued or rowset sources are added only when a reduced real-repository fixture demonstrates a false dependency.
 
@@ -121,7 +130,7 @@ The parser remains conservative and does not claim complete T-SQL grammar covera
 Representative fixtures live under:
 
 - `tests/fixtures/tsql_complex/` — dependency-oriented complex T-SQL patterns;
-- `tests/fixtures/real_repository/` — reduced synthetic cases derived from real-repository failures;
+- `tests/fixtures/real_repository/` — reduced synthetic cases derived from real-repository failures, including physical Script aggregation and transient UPDATE aliases;
 - `tests/fixtures/object_scopes/` — multi-definition, batch-boundary, evidence-ownership, DDL foreign-key and real procedure-parameter cases.
 
 Every fixture must represent dependency or ownership behavior rather than merely increasing syntax variety.
@@ -136,4 +145,4 @@ source -> target
 
 where source depends on target.
 
-Changes to the public AST, dependency direction or serialized schemas require separate versioned architecture decisions. Object-scoped ownership remains frozen by the `0.21.0` architecture contract.
+Changes to the public AST, dependency direction or serialized schemas require separate versioned architecture decisions. Object-scoped ownership remains frozen by the `0.21.0` architecture contract; physical source identity remains frozen by `docs/sql-source-identity.md`.
