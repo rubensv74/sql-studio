@@ -7,7 +7,7 @@ SQL Studio performs static analysis over SQL source files without requiring a li
 ## 2. Main flow
 
 ```text
-SQL files
+SqlSource[]
   -> SQLParser
   -> SqlDocument / SqlObject / Reference
   -> DependencyResolver
@@ -19,8 +19,14 @@ SQL files
        -> StaticAnalysisRuleEngine
             -> SQL001 Circular Dependency
             -> SQL002 Dead Object Candidate
-  -> JSON / HTML / CLI
+       -> RepositoryAnalysisEngine
+            -> RepositoryAnalysisResult
+                 -> JSON schema 1.0
+                 -> self-contained HTML
+  -> CLI
 ```
+
+`RepositoryAnalysisEngine` is a product-level composition layer, not a second parser or dependency engine. It parses each physical source once, resolves one canonical graph and reuses that graph/context for repository inventory, rule findings, circular components, dead-object candidates and report views.
 
 Distribution flow is separate from business semantics:
 
@@ -32,7 +38,9 @@ src/sqlstudio
   -> sqlstudio.cli:main
 ```
 
-## 3. Parser and definition metadata
+## 3. Physical source and parser boundary
+
+`SqlSource` is the physical repository-input model. Its `source_id` remains independent from SQL schema-object identity. Durable definitions keep their SQL names; script-only scopes use `script:<source_id>`.
 
 The parser is dependency-oriented rather than a complete T-SQL compiler. It extracts supported schema objects, references and execution metadata from repository source files.
 
@@ -67,7 +75,7 @@ This guarantees that a local definition does not remain `Unknown` merely because
 
 Dynamic execution through `EXEC(...)` or `sp_executesql` is flagged on the owning parsed SQL object so higher-level analyses can surface uncertainty. Dynamic SQL is not recursively promoted to guaranteed dependency evidence.
 
-The parser support contract is versioned in `docs/parser-support.md`; the ownership decision is frozen in `docs/object-scoped-parser.md`.
+The parser support contract is versioned in `docs/parser-support.md`; object ownership is frozen in `docs/object-scoped-parser.md`; physical identity is frozen in `docs/sql-source-identity.md`.
 
 ## 4. Dependency Engine
 
@@ -84,7 +92,7 @@ where `source` depends on `target`.
 - `dependencies_of(name)`: outgoing targets used by `name`;
 - `dependents_of(name)`: incoming sources that depend on `name`.
 
-Changing this direction would break Cross Reference, Impact Analysis, Circular Dependency Detection, Dead Object Detection and Rule Engine semantics.
+Changing this direction would break Cross Reference, Impact Analysis, Circular Dependency Detection, Dead Object Detection, Rule Engine and Repository Analysis semantics.
 
 ## 5. Cross Reference Engine
 
@@ -93,6 +101,8 @@ Cross Reference exposes direct incoming/outgoing relationships and deterministic
 ## 6. Impact Analysis Engine
 
 Impact Analysis answers which SQL objects can be affected if a selected object changes. Because graph edges point from dependent to dependency, it traverses `dependents_of()` transitively. Direct and indirect HTML impact is derived from the in-memory impact tree. Impact JSON schema `1.0` remains deliberately flat.
+
+Impact stays an on-demand specialized capability. Repository Analysis does not precompute a transitive impact tree for every object.
 
 ## 7. Circular Dependency Engine
 
@@ -128,9 +138,38 @@ StaticAnalysisRule
 
 Built-in IDs are `SQL001` Circular Dependency (`error`) and `SQL002` Dead Object Candidate (`warning`).
 
-The Rule Engine is additive. Dedicated `circular-dependencies` and `dead-objects` contracts remain supported. The consolidated `analyze` command is preferred when one normalized report or severity gate is required.
+The Rule Engine is additive. Dedicated `circular-dependencies` and `dead-objects` contracts remain supported. The consolidated `analyze` command is preferred when one normalized rule report or severity gate is required.
 
-## 10. Packaging and CLI boundary
+## 10. Unified Repository Analysis
+
+`RepositoryAnalysisEngine` composes the stable parser, resolver and graph algorithms into one product-level repository result.
+
+The execution contract is:
+
+1. canonicalize and deduplicate `SqlSource` inputs by source identity;
+2. parse each source exactly once;
+3. resolve one `DependencyGraph`;
+4. create one shared `RuleContext`;
+5. run the static-analysis rules over that context;
+6. run circular and dead-object engines over the same graph;
+7. pair each original `SqlSource` with its parsed document to create source/object provenance;
+8. enrich local object records with direct dependencies and dependents from the canonical graph;
+9. return one immutable `RepositoryAnalysisResult`.
+
+`RepositoryAnalysisResult` is then consumed independently by:
+
+- `RepositoryAnalysisSerializer` — new JSON schema `1.0`;
+- `RepositoryAnalysisReportGenerator` — self-contained HTML.
+
+The HTML generator never reparses SQL and never defines alternate analysis semantics. Existing specialized JSON schemas are not embedded by mutation; the unified serializer owns its own explicit schema namespace.
+
+The unified report deliberately excludes volatile execution metadata such as timestamps, machine names and inferred Git state from schema `1.0`, keeping repeated analysis deterministic for the same source contents/configuration.
+
+Key-object ranking is based on direct incoming dependents. It is an informational centrality signal, not a new static-analysis rule or severity.
+
+The complete contract is frozen in `docs/unified-repository-analysis.md`.
+
+## 11. Packaging and CLI boundary
 
 `src/sqlstudio/cli.py` is the canonical CLI implementation. Package metadata declares the installed console entry point `sqlstudio = sqlstudio.cli:main`.
 
@@ -146,13 +185,17 @@ CLI exit codes remain:
 - `1`: handled execution/input failure;
 - `2`: successful `analyze` execution whose findings meet the requested `--fail-on` threshold.
 
-## 11. Validation boundary
+`repository-analysis` uses the normal success/error codes and does not introduce a new quality-gate exit code in schema/CLI version `1.0`.
+
+## 12. Validation boundary
 
 The baseline targets Python 3.12+. GitHub Actions compiles sources, validates imports, runs the full unit-test suite, exercises representative complex-T-SQL and object-scope corpora plus the repository wrapper, builds sdist/wheel, installs the wheel and executes `sqlstudio` from outside the checkout with `PYTHONPATH` cleared.
 
-A source-only green test suite is insufficient to validate packaging or parser distribution behavior.
+Repository Analysis is considered distributable only when both JSON schema `1.0` and self-contained HTML can be generated through the installed wheel outside the checkout.
 
-## 12. Performance tooling boundary
+A source-only green test suite is insufficient to validate packaging or parser/report distribution behavior.
+
+## 13. Performance tooling boundary
 
 Runtime profiling and performance benchmarking are **not part of the current MVP architecture**.
 
@@ -162,6 +205,6 @@ A future profiler would introduce a live/runtime database boundary with credenti
 
 Performance tooling may only re-enter after satisfying the contract in `docs/performance-tooling-scope.md`. Future implementation must live under `src/sqlstudio/` and must not silently change the repository-only static-analysis boundary of existing analyzers.
 
-## 13. Release boundary
+## 14. Release boundary
 
 The current release channel is GitHub Releases only and remains separate from analysis semantics. PyPI publication and runtime profiler/benchmark tooling require separate explicit decisions.
